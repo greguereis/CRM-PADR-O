@@ -1,2 +1,0 @@
-# CRM-PADR-O
-Projeto
