@@ -1,15 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { 
-  Plus, Search, Filter, X, Edit2, Trash2, Eye,
-  ChevronLeft, ChevronRight, Download, FileText,
-  DollarSign, Calendar, User, CheckCircle, XCircle,
-  Clock, TrendingUp, BarChart3, Send, RefreshCw
+  Plus, Search, X, Edit2, Trash2,
+  Download, FileText, DollarSign, Calendar,
+  CheckCircle, XCircle, Send, RefreshCw
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
-import RelatorioModal from '../components/common/RelatorioModal'
-import { formatCurrency, formatDate, formatDateTime } from '../utils/formatadores'
+import GerarRelatorioModal from '../components/common/GerarRelatorioModal'
+import { formatCurrency, formatDate } from '../utils/formatadores'
 
 export default function Propostas() {
   const { user, membrosEquipe } = useAuth()
@@ -20,7 +19,7 @@ export default function Propostas() {
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editando, setEditando] = useState(null)
-  const [showRelatorio, setShowRelatorio] = useState(false)
+  const [showGerarRelatorio, setShowGerarRelatorio] = useState(false)
   
   // Filtros
   const [busca, setBusca] = useState('')
@@ -87,6 +86,7 @@ export default function Propostas() {
   const carregarPropostas = async () => {
     setLoading(true)
     try {
+      // Buscar todas as propostas da equipe
       const { data, error } = await supabase
         .from('propostas')
         .select('*')
@@ -95,41 +95,49 @@ export default function Propostas() {
       
       if (error) throw error
       
-      // Enriquecer com nomes
-      const propostasEnriquecidas = await Promise.all(
-        (data || []).map(async (proposta) => {
-          let clienteNome = 'Cliente removido'
-          let veiculo = ''
-          if (proposta.cliente_id) {
-            const { data: cliente } = await supabase
-              .from('contatos')
-              .select('nome, veiculo_interesse')
-              .eq('id', proposta.cliente_id)
-              .single()
-            if (cliente) {
-              clienteNome = cliente.nome
-              veiculo = cliente.veiculo_interesse || ''
-            }
-          }
-          
-          let vendedorNome = 'Vendedor removido'
-          if (proposta.vendedor_id) {
-            const { data: vendedor } = await supabase
-              .from('usuarios')
-              .select('nome')
-              .eq('id', proposta.vendedor_id)
-              .single()
-            if (vendedor) vendedorNome = vendedor.nome
-          }
-          
-          return {
-            ...proposta,
-            cliente_nome: clienteNome,
-            veiculo: veiculo,
-            vendedor_nome: vendedorNome
-          }
-        })
-      )
+      // Buscar todos os clientes e vendedores em uma única consulta
+      const clienteIds = [...new Set((data || []).map(p => p.cliente_id).filter(Boolean))]
+      const vendedorIds = [...new Set((data || []).map(p => p.vendedor_id).filter(Boolean))]
+      
+      let clientesMap = {}
+      let vendedoresMap = {}
+      
+      if (clienteIds.length > 0) {
+        const { data: clientesData } = await supabase
+          .from('contatos')
+          .select('id, nome, veiculo_interesse')
+          .in('id', clienteIds)
+        
+        clientesMap = (clientesData || []).reduce((acc, c) => {
+          acc[c.id] = c
+          return acc
+        }, {})
+      }
+      
+      if (vendedorIds.length > 0) {
+        const { data: vendedoresData } = await supabase
+          .from('usuarios')
+          .select('id, nome')
+          .in('id', vendedorIds)
+        
+        vendedoresMap = (vendedoresData || []).reduce((acc, v) => {
+          acc[v.id] = v
+          return acc
+        }, {})
+      }
+      
+      // Enriquecer as propostas
+      const propostasEnriquecidas = (data || []).map(proposta => {
+        const cliente = clientesMap[proposta.cliente_id]
+        const vendedor = vendedoresMap[proposta.vendedor_id]
+        
+        return {
+          ...proposta,
+          cliente_nome: cliente?.nome || 'Cliente removido',
+          veiculo: cliente?.veiculo_interesse || '',
+          vendedor_nome: vendedor?.nome || 'Vendedor removido'
+        }
+      })
       
       setPropostas(propostasEnriquecidas)
     } catch (error) {
@@ -183,7 +191,7 @@ export default function Propostas() {
     try {
       const dados = {
         cliente_id: formData.cliente_id,
-        vendedor_id: formData.vendedor_id || user.uid,
+        vendedor_id: formData.vendedor_id || user.id,
         valor: parseFloat(formData.valor),
         data_envio: formData.data_envio,
         status: formData.status || 'enviada',
@@ -204,7 +212,7 @@ export default function Propostas() {
         // Criar
         const { error } = await supabase
           .from('propostas')
-          .insert([{ ...dados, criado_por: user.uid }])
+          .insert([{ ...dados, criado_por: user.id }])
         
         if (error) throw error
         toast.success('Proposta criada!')
@@ -311,7 +319,7 @@ export default function Propostas() {
   const getStatusBadge = (status) => {
     const configs = {
       enviada: { label: 'Enviada', cor: 'bg-blue-500/10 text-blue-500', icon: <Send size={12} /> },
-      negociando: { label: 'Negociando', cor: 'bg-amber-500/10 text-amber-500', icon: <Clock size={12} /> },
+      negociando: { label: 'Negociando', cor: 'bg-amber-500/10 text-amber-500', icon: <RefreshCw size={12} /> },
       aceita: { label: '✅ Aceita', cor: 'bg-green-500/10 text-green-500', icon: <CheckCircle size={12} /> },
       recusada: { label: '❌ Recusada', cor: 'bg-red-500/10 text-red-500', icon: <XCircle size={12} /> }
     }
@@ -344,7 +352,7 @@ export default function Propostas() {
         </div>
         <div className="flex gap-2 flex-wrap">
           <button
-            onClick={() => setShowRelatorio(true)}
+            onClick={() => setShowGerarRelatorio(true)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-green-500/10 text-green-500 hover:bg-green-500/20 transition-all text-sm"
           >
             <Download size={16} />
@@ -491,9 +499,6 @@ export default function Propostas() {
                       <td className="p-3">
                         <div>
                           <p className="text-sm font-medium text-[var(--text-primary)]">{p.cliente_nome}</p>
-                          {p.cliente_telefone && (
-                            <p className="text-xs text-[var(--text-muted)] font-mono">{p.cliente_telefone}</p>
-                          )}
                         </div>
                       </td>
                       <td className="p-3">
@@ -668,9 +673,9 @@ export default function Propostas() {
       )}
 
       {/* ===== RELATÓRIO ===== */}
-      <RelatorioModal
-        isOpen={showRelatorio}
-        onClose={() => setShowRelatorio(false)}
+      <GerarRelatorioModal
+        isOpen={showGerarRelatorio}
+        onClose={() => setShowGerarRelatorio(false)}
         titulo="Relatório de Propostas"
         dados={dadosRelatorio}
         colunas={colunasRelatorio}

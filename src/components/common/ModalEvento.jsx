@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, Calendar, Clock, User, Car, FileText, Users } from 'lucide-react'
+import { X, Calendar, Users } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import toast from 'react-hot-toast'
 
@@ -49,7 +49,7 @@ export default function ModalEvento({
       setFormData({
         tipo: 'reuniao',
         cliente_id: '',
-        funcionario_id: user?.uid || '',
+        funcionario_id: user?.id || '',
         veiculo: '',
         data: dataAtual,
         hora: horaAtual,
@@ -98,7 +98,7 @@ export default function ModalEvento({
         duracao_minutos: parseInt(formData.duracao) || 30,
         local: formData.local || null,
         observacoes: formData.observacoes || null,
-        criado_por: user.uid
+        criado_por: user.id
       }
 
       await onSave(eventoData, evento?.id)
@@ -202,8 +202,7 @@ export default function ModalEvento({
 
           {/* Veículo (opcional, mas útil para test-drive) */}
           <div>
-            <label className="text-sm font-medium text-[var(--text-secondary)] block mb-1 flex items-center gap-2">
-              <Car size={16} className="text-[#D2B68A]" />
+            <label className="text-sm font-medium text-[var(--text-secondary)] block mb-1">
               Veículo
             </label>
             <input
@@ -280,8 +279,7 @@ export default function ModalEvento({
 
           {/* Observações */}
           <div>
-            <label className="text-sm font-medium text-[var(--text-secondary)] block mb-1 flex items-center gap-2">
-              <FileText size={16} className="text-[#D2B68A]" />
+            <label className="text-sm font-medium text-[var(--text-secondary)] block mb-1">
               Observações
             </label>
             <textarea

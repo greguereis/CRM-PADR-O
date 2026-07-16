@@ -6,12 +6,11 @@ import {
   UserPlus,
   FileText,
   CheckCircle,
-  TrendingUp,
   X
 } from 'lucide-react'
 
 const links = [
-  { to: '/overview', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/leads', icon: Users, label: 'Leads' },
   { to: '/agenda', icon: Calendar, label: 'Agenda' },
   { to: '/propostas', icon: FileText, label: 'Propostas' },

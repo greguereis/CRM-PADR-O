@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { 
-  Calendar, Clock, Plus, Search, Filter, 
+  Calendar, Clock, Plus, Search,
   ChevronLeft, ChevronRight, RefreshCw, 
-  Users, Car, Phone, FileText, Download,
-  X, Eye, Edit2, Trash2, CheckCircle
+  Users, Car, Phone, Download,
+  X, Edit2, Trash2
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
@@ -12,8 +12,8 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday
 import { ptBR } from 'date-fns/locale'
 import ModalEvento from '../components/agenda/ModalEvento'
 import TestDriveForm from '../components/agenda/TestDriveForm'
-import RelatorioModal from '../components/common/RelatorioModal'
-import { formatCurrency, formatDateTime, formatPhone } from '../utils/formatadores'
+import GerarRelatorioModal from '../components/common/GerarRelatorioModal'
+import { formatDateTime } from '../utils/formatadores'
 
 export default function Agenda() {
   const { user, membrosEquipe } = useAuth()
@@ -31,13 +31,12 @@ export default function Agenda() {
   const [modalEventoAberto, setModalEventoAberto] = useState(false)
   const [modalTestDriveAberto, setModalTestDriveAberto] = useState(false)
   const [eventoEditando, setEventoEditando] = useState(null)
-  const [showRelatorio, setShowRelatorio] = useState(false)
+  const [showGerarRelatorio, setShowGerarRelatorio] = useState(false)
   
   // Filtros
   const [filtroTipo, setFiltroTipo] = useState('todos')
   const [filtroFuncionario, setFiltroFuncionario] = useState('')
   const [busca, setBusca] = useState('')
-  const [eventosFiltrados, setEventosFiltrados] = useState([])
 
   // Referência para evitar recarregamentos duplicados
   const carregadoRef = useRef(false)
@@ -88,8 +87,6 @@ export default function Agenda() {
       )
     }
     
-    setEventosFiltrados(filtrados)
-    
     // Atualizar eventos do dia selecionado
     if (diaSelecionado) {
       const dataStr = format(diaSelecionado, 'yyyy-MM-dd')
@@ -124,48 +121,54 @@ export default function Agenda() {
       const { data: eventosData, error } = await supabase
         .from('eventos')
         .select('*')
-        .eq('criado_por', user.uid)
+        .eq('criado_por', user.id)
         .order('data_hora', { ascending: true })
       
       if (error) throw error
       
-      // Enriquecer com nomes dos clientes e funcionários
-      const eventosEnriquecidos = await Promise.all(
-        (eventosData || []).map(async (evento) => {
-          // Buscar nome do cliente
-          let clienteNome = 'Cliente removido'
-          let clienteTelefone = ''
-          if (evento.cliente_id) {
-            const { data: cliente } = await supabase
-              .from('contatos')
-              .select('nome, telefone')
-              .eq('id', evento.cliente_id)
-              .single()
-            if (cliente) {
-              clienteNome = cliente.nome
-              clienteTelefone = cliente.telefone
-            }
-          }
-          
-          // Buscar nome do funcionário (se houver)
-          let funcionarioNome = ''
-          if (evento.funcionario_id) {
-            const { data: funcionario } = await supabase
-              .from('usuarios')
-              .select('nome')
-              .eq('id', evento.funcionario_id)
-              .single()
-            if (funcionario) funcionarioNome = funcionario.nome
-          }
-          
-          return {
-            ...evento,
-            cliente_nome: clienteNome,
-            cliente_telefone: clienteTelefone,
-            funcionario_nome: funcionarioNome
-          }
-        })
-      )
+      // Buscar todos os clientes e funcionários em uma única consulta
+      const clienteIds = [...new Set((eventosData || []).map(e => e.cliente_id).filter(Boolean))]
+      const funcionarioIds = [...new Set((eventosData || []).map(e => e.funcionario_id).filter(Boolean))]
+      
+      let clientesMap = {}
+      let funcionariosMap = {}
+      
+      if (clienteIds.length > 0) {
+        const { data: clientesData } = await supabase
+          .from('contatos')
+          .select('id, nome, telefone')
+          .in('id', clienteIds)
+        
+        clientesMap = (clientesData || []).reduce((acc, c) => {
+          acc[c.id] = c
+          return acc
+        }, {})
+      }
+      
+      if (funcionarioIds.length > 0) {
+        const { data: funcionariosData } = await supabase
+          .from('usuarios')
+          .select('id, nome')
+          .in('id', funcionarioIds)
+        
+        funcionariosMap = (funcionariosData || []).reduce((acc, f) => {
+          acc[f.id] = f
+          return acc
+        }, {})
+      }
+      
+      // Enriquecer os eventos
+      const eventosEnriquecidos = (eventosData || []).map(evento => {
+        const cliente = clientesMap[evento.cliente_id]
+        const funcionario = funcionariosMap[evento.funcionario_id]
+        
+        return {
+          ...evento,
+          cliente_nome: cliente?.nome || 'Cliente removido',
+          cliente_telefone: cliente?.telefone || '',
+          funcionario_nome: funcionario?.nome || ''
+        }
+      })
       
       setEventos(eventosEnriquecidos)
     } catch (error) {
@@ -191,7 +194,7 @@ export default function Agenda() {
         // Criar
         const { error } = await supabase
           .from('eventos')
-          .insert([{ ...dados, criado_por: user.uid }])
+          .insert([{ ...dados, criado_por: user.id }])
         
         if (error) throw error
       }
@@ -244,7 +247,7 @@ export default function Agenda() {
     { key: 'observacoes', label: 'Observações' }
   ]
 
-  const dadosRelatorio = eventosFiltrados.map(e => ({
+  const dadosRelatorio = eventos.map(e => ({
     ...e,
     tipo: e.tipo === 'reuniao' ? 'Reunião' : e.tipo === 'test_drive' ? 'Test-Drive' : 'Follow-up'
   }))
@@ -262,8 +265,8 @@ export default function Agenda() {
   const getTipoLabel = (tipo) => {
     switch(tipo) {
       case 'reuniao': return 'Reunião'
-      case 'test_drive': return '🚗 Test-Drive'
-      case 'follow_up': return '📞 Follow-up'
+      case 'test_drive': return 'Test-Drive'
+      case 'follow_up': return 'Follow-up'
       default: return tipo
     }
   }
@@ -303,7 +306,7 @@ export default function Agenda() {
         </div>
         <div className="flex gap-2 flex-wrap">
           <button
-            onClick={() => setShowRelatorio(true)}
+            onClick={() => setShowGerarRelatorio(true)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-green-500/10 text-green-500 hover:bg-green-500/20 transition-all text-sm"
           >
             <Download size={16} />
@@ -346,9 +349,9 @@ export default function Agenda() {
             className="px-3 py-1.5 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] border border-transparent focus:border-[#D2B68A] outline-none"
           >
             <option value="todos">Todos os tipos</option>
-            <option value="reuniao">📅 Reunião</option>
-            <option value="test_drive">🚗 Test-Drive</option>
-            <option value="follow_up">📞 Follow-up</option>
+            <option value="reuniao">Reunião</option>
+            <option value="test_drive">Test-Drive</option>
+            <option value="follow_up">Follow-up</option>
           </select>
 
           <select
@@ -402,7 +405,7 @@ export default function Agenda() {
             </button>
           </div>
           <span className="text-xs text-[var(--text-muted)]">
-            {eventosFiltrados.length} eventos
+            {eventos.length} eventos
           </span>
         </div>
 
@@ -416,7 +419,7 @@ export default function Agenda() {
           
           {diasMes.map((dia, index) => {
             const dataStr = format(dia, 'yyyy-MM-dd')
-            const eventosDoDiaCount = eventosFiltrados.filter(e => 
+            const eventosDoDiaCount = eventos.filter(e => 
               format(parseISO(e.data_hora), 'yyyy-MM-dd') === dataStr
             ).length
             const isDiaSelecionado = diaSelecionado && isSameDay(dia, diaSelecionado)
@@ -573,12 +576,12 @@ export default function Agenda() {
         onClose={() => setModalTestDriveAberto(false)}
         onSave={salvarEvento}
         clientes={clientes}
-        funcionarioId={user?.uid}
+        funcionarioId={user?.id}
       />
 
-      <RelatorioModal
-        isOpen={showRelatorio}
-        onClose={() => setShowRelatorio(false)}
+      <GerarRelatorioModal
+        isOpen={showGerarRelatorio}
+        onClose={() => setShowGerarRelatorio(false)}
         titulo="Relatório de Agenda"
         dados={dadosRelatorio}
         colunas={colunasRelatorio}

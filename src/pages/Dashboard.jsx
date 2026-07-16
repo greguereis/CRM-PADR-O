@@ -1,17 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { 
-  Users, Car, DollarSign, TrendingUp, TrendingDown,
-  Calendar, CheckCircle, XCircle, Clock, Award,
-  BarChart3, LineChart as LineChartIcon, Download,
-  RefreshCw, Eye, Target, Gem, Sparkles, Crown,
-  ArrowUp, ArrowDown, Minus, UserPlus, Phone,
-  MessageSquare, FileText, Percent, Package
+  Users, Car, DollarSign, TrendingUp,
+  Calendar, CheckCircle, BarChart3,
+  RefreshCw, Sparkles
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import { formatCurrency, formatDate } from '../utils/formatadores'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
-import RelatorioModal from '../components/common/RelatorioModal'
+import GerarRelatorioModal from '../components/common/GerarRelatorioModal'
 import toast from 'react-hot-toast'
 
 export default function Dashboard() {
@@ -19,7 +16,7 @@ export default function Dashboard() {
   
   // Estados
   const [loading, setLoading] = useState(true)
-  const [showRelatorio, setShowRelatorio] = useState(false)
+  const [showGerarRelatorio, setShowGerarRelatorio] = useState(false)
   const [periodo, setPeriodo] = useState('mes') // dia, semana, mes
   
   // Dados do Dashboard
@@ -52,6 +49,8 @@ export default function Dashboard() {
   const [dadosGraficoOrigem, setDadosGraficoOrigem] = useState([])
   const [dadosGraficoVendedores, setDadosGraficoVendedores] = useState([])
   const [dadosGraficoStatus, setDadosGraficoStatus] = useState([])
+  const [contratos, setContratos] = useState([])
+  const [leads, setLeads] = useState([])
 
   const carregadoRef = useRef(false)
 
@@ -74,7 +73,13 @@ export default function Dashboard() {
       carregadoRef.current = true
       carregarDashboard()
     }
-  }, [user?.equipeId, periodo])
+  }, [user?.equipeId])
+
+  useEffect(() => {
+    if (carregadoRef.current) {
+      carregarDashboard()
+    }
+  }, [periodo])
 
   const carregarDashboard = async () => {
     if (!user?.equipeId) {
@@ -102,13 +107,14 @@ export default function Dashboard() {
         .eq('equipe_id', user.equipeId)
         .is('deletado_em', null)
 
-      const leads = todosLeads || []
-      const totalLeads = leads.length
+      const leadsData = todosLeads || []
+      setLeads(leadsData)
+      const totalLeads = leadsData.length
 
       // Leads por período
-      const leadsHoje = leads.filter(l => l.data_criacao >= inicioHoje && l.data_criacao < fimHoje)
-      const leadsSemana = leads.filter(l => l.data_criacao >= inicioSemanaStr)
-      const leadsMes = leads.filter(l => l.data_criacao >= inicioMes && l.data_criacao < fimMes)
+      const leadsHoje = leadsData.filter(l => l.data_criacao >= inicioHoje && l.data_criacao < fimHoje)
+      const leadsSemana = leadsData.filter(l => l.data_criacao >= inicioSemanaStr)
+      const leadsMes = leadsData.filter(l => l.data_criacao >= inicioMes && l.data_criacao < fimMes)
 
       // ===== CONTRATOS (VENDAS) =====
       const { data: todosContratos } = await supabase
@@ -116,21 +122,22 @@ export default function Dashboard() {
         .select('*')
         .eq('equipe_id', user.equipeId)
 
-      const contratos = todosContratos || []
-      const totalVendas = contratos.length
+      const contratosData = todosContratos || []
+      setContratos(contratosData)
+      const totalVendas = contratosData.length
 
-      const vendasHoje = contratos.filter(c => c.data_fechamento >= inicioHoje && c.data_fechamento < fimHoje)
-      const vendasMes = contratos.filter(c => c.data_fechamento >= inicioMes && c.data_fechamento < fimMes)
+      const vendasHoje = contratosData.filter(c => c.data_fechamento >= inicioHoje && c.data_fechamento < fimHoje)
+      const vendasMes = contratosData.filter(c => c.data_fechamento >= inicioMes && c.data_fechamento < fimMes)
 
-      const faturamentoTotal = contratos.reduce((acc, c) => acc + (c.valor_venda || 0), 0)
+      const faturamentoTotal = contratosData.reduce((acc, c) => acc + (c.valor_venda || 0), 0)
       const faturamentoMes = vendasMes.reduce((acc, c) => acc + (c.valor_venda || 0), 0)
-      const comissaoTotal = contratos.reduce((acc, c) => acc + (c.comissao || 0), 0)
+      const comissaoTotal = contratosData.reduce((acc, c) => acc + (c.comissao || 0), 0)
       
       const ticketMedio = totalVendas > 0 ? faturamentoTotal / totalVendas : 0
 
       // ===== LEADS POR ORIGEM =====
       const origemMap = {}
-      leads.forEach(l => {
+      leadsData.forEach(l => {
         const origem = l.origem || 'trafego_pago'
         origemMap[origem] = (origemMap[origem] || 0) + 1
       })
@@ -145,7 +152,7 @@ export default function Dashboard() {
 
       // ===== VENDAS POR VENDEDOR =====
       const vendedorMap = {}
-      for (const contrato of contratos) {
+      for (const contrato of contratosData) {
         if (contrato.vendedor_id) {
           let nome = 'Desconhecido'
           const { data: vendedor } = await supabase
@@ -175,7 +182,7 @@ export default function Dashboard() {
         evolucaoMap[chave] = 0
       }
       
-      contratos.forEach(c => {
+      contratosData.forEach(c => {
         if (c.data_fechamento) {
           const d = new Date(c.data_fechamento)
           const chave = `${meses[d.getMonth()]} ${d.getFullYear()}`
@@ -191,7 +198,7 @@ export default function Dashboard() {
 
       // ===== STATUS DOS LEADS =====
       const statusMap = {}
-      leads.forEach(l => {
+      leadsData.forEach(l => {
         const status = l.status || 'lead_entrou'
         statusMap[status] = (statusMap[status] || 0) + 1
       })
@@ -226,7 +233,7 @@ export default function Dashboard() {
         .from('eventos')
         .select('*')
         .eq('tipo', 'test_drive')
-        .eq('criado_por', user.uid)
+        .eq('criado_por', user.id)
 
       const eventos = todosEventos || []
       const testDrivesAgendados = eventos.filter(e => new Date(e.data_hora) >= new Date()).length
@@ -241,12 +248,12 @@ export default function Dashboard() {
         .lt('data', fimHoje)
 
       // ===== ATENDIMENTOS PENDENTES =====
-      const atendimentosPendentes = leads.filter(l => 
+      const atendimentosPendentes = leadsData.filter(l => 
         l.status === 'lead_entrou' || l.status === 'contato_inicial'
       ).length
 
       // ===== TAXA DE CONVERSÃO =====
-      const leadsAbordados = leads.filter(l => l.status !== 'lead_entrou' && l.status !== 'perdeu').length
+      const leadsAbordados = leadsData.filter(l => l.status !== 'lead_entrou' && l.status !== 'perdeu').length
       const taxaConversao = leadsAbordados > 0 ? (totalVendas / leadsAbordados) * 100 : 0
 
       setKpis({
@@ -348,10 +355,10 @@ export default function Dashboard() {
             <option value="mes">Último mês</option>
           </select>
           <button
-            onClick={() => setShowRelatorio(true)}
+            onClick={() => setShowGerarRelatorio(true)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-green-500/10 text-green-500 hover:bg-green-500/20 transition-all text-sm"
           >
-            <Download size={16} />
+            <BarChart3 size={16} />
             Relatório
           </button>
           <button
@@ -439,7 +446,7 @@ export default function Dashboard() {
         {/* Evolução de Vendas */}
         <div className="card p-3">
           <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3 flex items-center gap-2">
-            <LineChartIcon size={16} className="text-[#D2B68A]" />
+            <TrendingUp size={16} className="text-[#D2B68A]" />
             Evolução de Vendas (Últimos 12 meses)
           </h3>
           <div className="h-48 sm:h-56">
@@ -471,7 +478,7 @@ export default function Dashboard() {
         {/* Leads por Origem */}
         <div className="card p-3">
           <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3 flex items-center gap-2">
-            <Package size={16} className="text-[#D2B68A]" />
+            <Users size={16} className="text-[#D2B68A]" />
             Leads por Origem
           </h3>
           <div className="h-48 sm:h-56">
@@ -510,7 +517,7 @@ export default function Dashboard() {
       {/* ===== VENDAS POR VENDEDOR ===== */}
       <div className="card p-3">
         <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3 flex items-center gap-2">
-          <Award size={16} className="text-[#D2B68A]" />
+          <CheckCircle size={16} className="text-[#D2B68A]" />
           Ranking de Vendas por Vendedor
         </h3>
         {dadosGraficoVendedores.length === 0 ? (
@@ -547,7 +554,7 @@ export default function Dashboard() {
       {/* ===== STATUS DOS LEADS ===== */}
       <div className="card p-3">
         <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3 flex items-center gap-2">
-          <Target size={16} className="text-[#D2B68A]" />
+          <Users size={16} className="text-[#D2B68A]" />
           Funil de Vendas
         </h3>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -570,9 +577,9 @@ export default function Dashboard() {
       </div>
 
       {/* ===== RELATÓRIO ===== */}
-      <RelatorioModal
-        isOpen={showRelatorio}
-        onClose={() => setShowRelatorio(false)}
+      <GerarRelatorioModal
+        isOpen={showGerarRelatorio}
+        onClose={() => setShowGerarRelatorio(false)}
         titulo="Relatório do Dashboard"
         dados={dadosRelatorio}
         colunas={colunasRelatorio}

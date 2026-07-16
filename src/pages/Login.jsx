@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
-import { Moon, Sun, Car, Shield, Sparkles } from 'lucide-react'
+import { Moon, Sun, Shield, Sparkles } from 'lucide-react'
 
 export default function Login() {
   const { login } = useAuth()
@@ -38,7 +38,7 @@ export default function Login() {
         {/* Logo */}
         <div className="space-y-2">
           <div className="w-16 h-16 bg-[#D2B68A] rounded-2xl flex items-center justify-center mx-auto">
-            <Car size={28} className="text-[#222D52]" />
+            <Shield size={28} className="text-[#222D52]" />
           </div>
           <h1 className="text-2xl font-bold text-[var(--text-primary)]">
             <span className="text-[#D2B68A]">PAR</span>HUB

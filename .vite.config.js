@@ -6,7 +6,9 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
-    open: true
+    open: true,
+    host: true, // Permite acesso de dispositivos na mesma rede
+    strictPort: false, // Se a porta 3000 estiver ocupada, tenta outra
   },
   build: {
     outDir: 'dist',

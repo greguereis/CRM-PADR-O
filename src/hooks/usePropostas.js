@@ -65,7 +65,7 @@ export function usePropostas() {
         .insert({
           ...dados,
           equipe_id: user.equipeId,
-          criado_por: user.uid,
+          criado_por: user.id,
           criado_em: new Date().toISOString()
         })
         .select()

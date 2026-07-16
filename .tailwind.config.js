@@ -12,20 +12,50 @@ export default {
         mono: ['DM Mono', 'monospace'],
       },
       colors: {
+        // Cores da paleta PARHUB
+        pearl: '#FDFFFF',
+        silk: '#EEE5D9',
+        marble: '#E8E4E0',
+        champagne: '#D2B68A',
+        velvet: '#222D52',
+        onyx: '#000000',
+        // Cores do sistema
+        background: {
+          primary: 'var(--bg-primary)',
+          secondary: 'var(--bg-secondary)',
+          tertiary: 'var(--bg-tertiary)',
+          card: 'var(--bg-card)',
+          hover: 'var(--bg-hover)',
+        },
+        text: {
+          primary: 'var(--text-primary)',
+          secondary: 'var(--text-secondary)',
+          muted: 'var(--text-muted)',
+        },
+        border: {
+          DEFAULT: 'var(--border-color)',
+          light: 'var(--border-light)',
+        },
         brand: {
-          50: '#faf5ff',
-          100: '#f3e8ff',
-          200: '#e9d5ff',
-          300: '#d8b4fe',
-          400: '#c084fc',
-          500: '#a855f7',
-          600: '#9333ea',
-          700: '#7e22ce',
-          800: '#6b21a8',
-          900: '#581c87',
-          950: '#3b0764',
-        }
-      }
+          DEFAULT: 'var(--brand-primary)',
+          hover: 'var(--brand-hover)',
+          light: 'var(--brand-light)',
+          dark: 'var(--brand-dark)',
+        },
+        success: 'var(--success)',
+        danger: 'var(--danger)',
+        warning: 'var(--warning)',
+        info: 'var(--info)',
+      },
+      boxShadow: {
+        sm: 'var(--shadow-sm)',
+        md: 'var(--shadow-md)',
+        lg: 'var(--shadow-lg)',
+      },
+      borderRadius: {
+        'card': '12px',
+        'btn': '8px',
+      },
     },
   },
   plugins: [],

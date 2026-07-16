@@ -2,14 +2,12 @@ import { useState, useEffect, useRef } from 'react'
 import { 
   Users, UserPlus, UserMinus, Copy, Check, Link2,
   Calendar, Car, Phone, Mail, Award, DollarSign,
-  TrendingUp, BarChart3, Eye, X, Download,
-  ChevronLeft, ChevronRight, RefreshCw, MessageSquare,
-  Clock, CheckCircle, AlertTriangle
+  TrendingUp, BarChart3, RefreshCw
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
-import RelatorioModal from '../components/common/RelatorioModal'
+import GerarRelatorioModal from '../components/common/GerarRelatorioModal'
 import { formatCurrency, formatDate, formatDateTime } from '../utils/formatadores'
 
 export default function Equipe() {
@@ -21,7 +19,7 @@ export default function Equipe() {
   const [loading, setLoading] = useState(true)
   const [membroSelecionado, setMembroSelecionado] = useState(null)
   const [showPainelMembro, setShowPainelMembro] = useState(false)
-  const [showRelatorio, setShowRelatorio] = useState(false)
+  const [showGerarRelatorio, setShowGerarRelatorio] = useState(false)
   
   // Estados para test-drives
   const [testDrives, setTestDrives] = useState([])
@@ -186,7 +184,7 @@ export default function Equipe() {
         .from('eventos')
         .select('*')
         .eq('tipo', 'test_drive')
-        .eq('criado_por', user.uid)
+        .eq('criado_por', user.id)
         .order('data_hora', { ascending: true })
       
       if (error) throw error
@@ -247,8 +245,8 @@ export default function Equipe() {
         .from('equipes')
         .insert({
           nome: nomeEquipe.trim(),
-          membros: [user.uid],
-          criado_por: user.uid,
+          membros: [user.id],
+          criado_por: user.id,
           criado_em: new Date()
         })
         .select()
@@ -259,7 +257,7 @@ export default function Equipe() {
       await supabase
         .from('usuarios')
         .update({ equipe_id: novaEquipe.id })
-        .eq('id', user.uid)
+        .eq('id', user.id)
 
       toast.success('Equipe criada!')
       await recarregarUsuario()
@@ -291,7 +289,7 @@ export default function Equipe() {
         return
       }
 
-      if (equipeData.membros && equipeData.membros.includes(user.uid)) {
+      if (equipeData.membros && equipeData.membros.includes(user.id)) {
         toast.error('Você já é membro desta equipe')
         return
       }
@@ -304,14 +302,14 @@ export default function Equipe() {
           .single()
 
         if (antigaEquipe) {
-          const novosMembros = (antigaEquipe.membros || []).filter(m => m !== user.uid)
+          const novosMembros = (antigaEquipe.membros || []).filter(m => m !== user.id)
           await supabase.from('equipes').update({ membros: novosMembros }).eq('id', user.equipeId)
         }
       }
 
-      const novosMembros = [...(equipeData.membros || []), user.uid]
+      const novosMembros = [...(equipeData.membros || []), user.id]
       await supabase.from('equipes').update({ membros: novosMembros }).eq('id', codigoEntrada.trim())
-      await supabase.from('usuarios').update({ equipe_id: codigoEntrada.trim() }).eq('id', user.uid)
+      await supabase.from('usuarios').update({ equipe_id: codigoEntrada.trim() }).eq('id', user.id)
 
       toast.success('Você entrou na equipe!')
       await recarregarUsuario()
@@ -328,7 +326,7 @@ export default function Equipe() {
   const adicionarMembro = async () => {
     if (!usuarioEncontrado) return
     try {
-      const novosMembros = [...(equipe.membros || []), usuarioEncontrado.id]
+      const novosMembros = [...(equipe?.membros || []), usuarioEncontrado.id]
       const { error } = await supabase
         .from('equipes')
         .update({ membros: novosMembros })
@@ -350,13 +348,13 @@ export default function Equipe() {
   }
 
   const removerMembro = async (membroId) => {
-    if (membroId === user.uid) {
+    if (membroId === user.id) {
       toast.error('Você não pode remover a si mesmo')
       return
     }
     if (!confirm('Remover este membro da equipe?')) return
     try {
-      const novosMembros = equipe.membros.filter(m => m !== membroId)
+      const novosMembros = (equipe?.membros || []).filter(m => m !== membroId)
       const { error } = await supabase
         .from('equipes')
         .update({ membros: novosMembros })
@@ -411,6 +409,10 @@ export default function Equipe() {
   }
 
   const copiarCodigo = () => {
+    if (!user?.equipeId) {
+      toast.error('Você não está em uma equipe')
+      return
+    }
     navigator.clipboard.writeText(user.equipeId)
     setCopied(true)
     toast.success('Código da equipe copiado!')
@@ -455,8 +457,8 @@ export default function Equipe() {
     return (
       <div className="space-y-4 max-w-md mx-auto mt-20">
         <div className="card p-8 text-center">
-          <div className="w-16 h-16 bg-brand-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <Plus size={28} className="text-brand-500" />
+          <div className="w-16 h-16 bg-[#D2B68A]/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <UserPlus size={28} className="text-[#D2B68A]" />
           </div>
           <h1 className="text-xl font-bold text-[var(--text-primary)] mb-2">Criar uma Equipe</h1>
           <p className="text-sm text-[var(--text-secondary)] mb-6">
@@ -468,7 +470,7 @@ export default function Equipe() {
               value={nomeEquipe}
               onChange={(e) => setNomeEquipe(e.target.value)}
               placeholder="Nome da equipe (ex: Agência REI)"
-              className="w-full px-3 py-2.5 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] placeholder-[var(--text-secondary)] border border-transparent focus:border-brand-500 outline-none text-center"
+              className="w-full px-3 py-2.5 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] placeholder-[var(--text-secondary)] border border-transparent focus:border-[#D2B68A] outline-none text-center"
               onKeyDown={(e) => e.key === 'Enter' && criarEquipe()}
             />
             <button
@@ -482,8 +484,8 @@ export default function Equipe() {
         </div>
 
         <div className="card p-8 text-center">
-          <div className="w-16 h-16 bg-brand-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <Link2 size={28} className="text-brand-500" />
+          <div className="w-16 h-16 bg-[#D2B68A]/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <Link2 size={28} className="text-[#D2B68A]" />
           </div>
           <h1 className="text-xl font-bold text-[var(--text-primary)] mb-2">Entrar em uma Equipe</h1>
           <p className="text-sm text-[var(--text-secondary)] mb-6">
@@ -495,7 +497,7 @@ export default function Equipe() {
               value={codigoEntrada}
               onChange={(e) => setCodigoEntrada(e.target.value)}
               placeholder="Cole o código da equipe aqui"
-              className="w-full px-3 py-2.5 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] placeholder-[var(--text-secondary)] border border-transparent focus:border-brand-500 outline-none font-mono text-center"
+              className="w-full px-3 py-2.5 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] placeholder-[var(--text-secondary)] border border-transparent focus:border-[#D2B68A] outline-none font-mono text-center"
               onKeyDown={(e) => e.key === 'Enter' && entrarNaEquipe()}
             />
             <button
@@ -514,7 +516,7 @@ export default function Equipe() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="w-8 h-8 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-[#D2B68A] border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
@@ -534,10 +536,10 @@ export default function Equipe() {
         </div>
         <div className="flex gap-2 flex-wrap">
           <button
-            onClick={() => setShowRelatorio(true)}
+            onClick={() => setShowGerarRelatorio(true)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-green-500/10 text-green-500 hover:bg-green-500/20 transition-all text-sm"
           >
-            <Download size={16} />
+            <BarChart3 size={16} />
             Relatório
           </button>
           <button
@@ -602,7 +604,7 @@ export default function Equipe() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-[var(--text-primary)]">
                     {membro.nome}
-                    {membro.id === user.uid && (
+                    {membro.id === user.id && (
                       <span className="text-[10px] text-[#D2B68A] ml-2">(você)</span>
                     )}
                   </p>
@@ -612,7 +614,7 @@ export default function Equipe() {
                       <Users size={10} /> {membro.total || 0} leads
                     </span>
                     <span className="flex items-center gap-0.5 text-blue-500">
-                      <CheckCircle size={10} /> {membro.abordados || 0} abordados
+                      <TrendingUp size={10} /> {membro.abordados || 0} abordados
                     </span>
                     <span className="flex items-center gap-0.5 text-green-500">
                       <DollarSign size={10} /> {formatCurrency(membro.valorTotal || 0)}
@@ -628,7 +630,7 @@ export default function Equipe() {
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#D2B68A]/10 text-[#D2B68A]">
                   {membro.fechados || 0} vendas
                 </span>
-                {membro.id !== user.uid && (
+                {membro.id !== user.id && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
@@ -713,13 +715,15 @@ export default function Equipe() {
                   <div>
                     <h2 className="text-lg font-semibold text-[var(--text-primary)]">{membroSelecionado.nome}</h2>
                     <p className="text-sm text-[var(--text-secondary)]">{membroSelecionado.email}</p>
-                    {membroSelecionado.id === user.uid && (
+                    {membroSelecionado.id === user.id && (
                       <span className="text-[10px] text-[#D2B68A]">(você)</span>
                     )}
                   </div>
                 </div>
                 <button onClick={() => { setShowPainelMembro(false); setMembroSelecionado(null) }} className="p-2 rounded-lg hover:bg-[var(--bg-tertiary)]">
-                  <X size={20} />
+                  <svg className="w-5 h-5 text-[var(--text-secondary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
                 </button>
               </div>
 
@@ -830,9 +834,9 @@ export default function Equipe() {
       )}
 
       {/* ===== RELATÓRIO ===== */}
-      <RelatorioModal
-        isOpen={showRelatorio}
-        onClose={() => setShowRelatorio(false)}
+      <GerarRelatorioModal
+        isOpen={showGerarRelatorio}
+        onClose={() => setShowGerarRelatorio(false)}
         titulo="Relatório da Equipe"
         dados={dadosRelatorio}
         colunas={colunasRelatorio}

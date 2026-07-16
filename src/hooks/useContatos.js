@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import Papa from 'papaparse'
@@ -11,7 +11,6 @@ export function useContatos() {
   const [totalContatos, setTotalContatos] = useState(0)
   const [listaSelecionada, setListaSelecionada] = useState(null)
   
-  const carregadoRef = useRef(false)
   const timeoutRef = useRef(null)
   const isMounted = useRef(true)
 
@@ -189,7 +188,7 @@ export function useContatos() {
       if (fetchError) throw fetchError
 
       const statusAtual = contato?.status_por_usuario || {}
-      statusAtual[user.uid] = novoStatus
+      statusAtual[user.id] = novoStatus
 
       const { error: updateError } = await supabase
         .from('contatos')
@@ -208,7 +207,7 @@ export function useContatos() {
         .from('historico_interacoes')
         .insert({
           contato_id: contatoId,
-          usuario_id: user.uid,
+          usuario_id: user.id,
           usuario_nome: user.nome || user.email,
           tipo: 'status',
           descricao: `Mudou status para: ${novoStatus}`,
@@ -239,7 +238,7 @@ export function useContatos() {
       if (fetchError) throw fetchError
 
       const statusAtual = contato?.status_por_usuario || {}
-      statusAtual[user.uid] = 'contrato_fechado'
+      statusAtual[user.id] = 'contrato_fechado'
 
       const { error } = await supabase
         .from('contatos')
@@ -260,7 +259,7 @@ export function useContatos() {
         .from('historico_interacoes')
         .insert({
           contato_id: contatoId,
-          usuario_id: user.uid,
+          usuario_id: user.id,
           usuario_nome: user.nome || user.email,
           tipo: 'fechamento',
           descricao: `Fechou no valor de R$ ${valorFechado} com ${comissaoPercentual}% de comissão`,
@@ -286,7 +285,7 @@ export function useContatos() {
         .from('historico_interacoes')
         .insert({
           contato_id: contatoId,
-          usuario_id: user.uid,
+          usuario_id: user.id,
           usuario_nome: user.nome || user.email,
           tipo: 'anotacao',
           descricao: anotacao,
@@ -325,7 +324,7 @@ export function useContatos() {
         .from('contatos')
         .update({ 
           deletado_em: new Date().toISOString(),
-          deletado_por: user.uid
+          deletado_por: user.id
         })
         .eq('id', contatoId)
 
@@ -398,7 +397,7 @@ export function useContatos() {
                 data_criacao: new Date().toISOString(),
                 link_whatsapp: telefone ? `https://wa.me/55${telefone.replace(/\D/g, '')}` : '',
                 equipe_id: user.equipeId,
-                criado_por: user.uid,
+                criado_por: user.id,
                 status_por_usuario: {},
                 criado_em: new Date().toISOString()
               }
@@ -518,8 +517,7 @@ export function useContatos() {
 
   // ===== CARREGAR INICIALMENTE =====
   useEffect(() => {
-    if (user?.equipeId && !carregadoRef.current) {
-      carregadoRef.current = true
+    if (user?.equipeId) {
       carregarContatos({}, 1, 25)
     }
 

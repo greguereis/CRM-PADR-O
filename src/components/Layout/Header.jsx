@@ -1,4 +1,4 @@
-import { Menu, Moon, Sun, LogOut, User, Bell, Settings, ChevronDown } from 'lucide-react'
+import { Menu, Moon, Sun, LogOut } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
 

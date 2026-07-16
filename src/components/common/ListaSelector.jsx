@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Folder, FolderPlus, X, Trash2, Pencil, Check, Loader2 } from 'lucide-react'
+import { Folder, FolderPlus, X, Pencil, Check } from 'lucide-react'
 import { useListas } from '../../hooks/useListas'
 import { useAuth } from '../../contexts/AuthContext'
 import toast from 'react-hot-toast'
@@ -131,7 +131,7 @@ export default function ListaSelector({
             disabled={criando || !novaListaNome.trim()}
             className="bg-[#D2B68A] text-[#222D52] px-4 py-1.5 rounded-lg text-sm hover:bg-[#C4A67A] transition-colors disabled:opacity-50 flex items-center gap-1"
           >
-            {criando ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+            {criando ? <div className="w-4 h-4 border-2 border-[#222D52] border-t-transparent rounded-full animate-spin" /> : <Check size={14} />}
             Criar
           </button>
           <button
@@ -220,15 +220,13 @@ export default function ListaSelector({
                 >
                   <Pencil size={10} className="text-[var(--text-secondary)]" />
                 </button>
-                {listaSelecionada === lista.id && (
-                  <button
-                    onClick={(e) => handleExcluirLista(lista.id, e)}
-                    className="p-0.5 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
-                    title="Excluir lista"
-                  >
-                    <Trash2 size={10} />
-                  </button>
-                )}
+                <button
+                  onClick={(e) => handleExcluirLista(lista.id, e)}
+                  className="p-0.5 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
+                  title="Excluir lista"
+                >
+                  <X size={10} />
+                </button>
               </div>
             )}
           </div>

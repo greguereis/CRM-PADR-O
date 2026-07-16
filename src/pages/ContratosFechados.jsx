@@ -1,15 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { 
   Plus, Search, X, Edit2, Trash2, Eye,
-  Download, FileText, DollarSign, Calendar, User, 
-  CheckCircle, TrendingUp, BarChart3, RefreshCw,
-  Car, Users, CreditCard, TrendingDown
+  Download, FileText, DollarSign, Calendar,
+  CheckCircle, RefreshCw
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
-import RelatorioModal from '../components/common/RelatorioModal'
-import { formatCurrency, formatDate, formatDateTime } from '../utils/formatadores'
+import GerarRelatorioModal from '../components/common/GerarRelatorioModal'
+import { formatCurrency, formatDate } from '../utils/formatadores'
 
 export default function ContratosFechados() {
   const { user, membrosEquipe } = useAuth()
@@ -20,7 +19,7 @@ export default function ContratosFechados() {
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editando, setEditando] = useState(null)
-  const [showRelatorio, setShowRelatorio] = useState(false)
+  const [showGerarRelatorio, setShowGerarRelatorio] = useState(false)
   const [showDetalhes, setShowDetalhes] = useState(null)
   
   // Filtros
@@ -92,6 +91,7 @@ export default function ContratosFechados() {
   const carregarContratos = async () => {
     setLoading(true)
     try {
+      // Buscar todos os contratos da equipe
       const { data, error } = await supabase
         .from('contratos')
         .select('*')
@@ -100,44 +100,50 @@ export default function ContratosFechados() {
       
       if (error) throw error
       
-      // Enriquecer com nomes
-      const contratosEnriquecidos = await Promise.all(
-        (data || []).map(async (contrato) => {
-          let clienteNome = 'Cliente removido'
-          let veiculo = ''
-          let telefone = ''
-          if (contrato.cliente_id) {
-            const { data: cliente } = await supabase
-              .from('contatos')
-              .select('nome, veiculo_interesse, telefone')
-              .eq('id', contrato.cliente_id)
-              .single()
-            if (cliente) {
-              clienteNome = cliente.nome
-              veiculo = cliente.veiculo_interesse || ''
-              telefone = cliente.telefone || ''
-            }
-          }
-          
-          let vendedorNome = 'Vendedor removido'
-          if (contrato.vendedor_id) {
-            const { data: vendedor } = await supabase
-              .from('usuarios')
-              .select('nome')
-              .eq('id', contrato.vendedor_id)
-              .single()
-            if (vendedor) vendedorNome = vendedor.nome
-          }
-          
-          return {
-            ...contrato,
-            cliente_nome: clienteNome,
-            veiculo: veiculo,
-            cliente_telefone: telefone,
-            vendedor_nome: vendedorNome
-          }
-        })
-      )
+      // Buscar todos os clientes e vendedores em uma única consulta
+      const clienteIds = [...new Set((data || []).map(c => c.cliente_id).filter(Boolean))]
+      const vendedorIds = [...new Set((data || []).map(c => c.vendedor_id).filter(Boolean))]
+      
+      let clientesMap = {}
+      let vendedoresMap = {}
+      
+      if (clienteIds.length > 0) {
+        const { data: clientesData } = await supabase
+          .from('contatos')
+          .select('id, nome, veiculo_interesse, telefone')
+          .in('id', clienteIds)
+        
+        clientesMap = (clientesData || []).reduce((acc, c) => {
+          acc[c.id] = c
+          return acc
+        }, {})
+      }
+      
+      if (vendedorIds.length > 0) {
+        const { data: vendedoresData } = await supabase
+          .from('usuarios')
+          .select('id, nome')
+          .in('id', vendedorIds)
+        
+        vendedoresMap = (vendedoresData || []).reduce((acc, v) => {
+          acc[v.id] = v
+          return acc
+        }, {})
+      }
+      
+      // Enriquecer os contratos
+      const contratosEnriquecidos = (data || []).map(contrato => {
+        const cliente = clientesMap[contrato.cliente_id]
+        const vendedor = vendedoresMap[contrato.vendedor_id]
+        
+        return {
+          ...contrato,
+          cliente_nome: cliente?.nome || 'Cliente removido',
+          veiculo: cliente?.veiculo_interesse || '',
+          cliente_telefone: cliente?.telefone || '',
+          vendedor_nome: vendedor?.nome || 'Vendedor removido'
+        }
+      })
       
       setContratos(contratosEnriquecidos)
     } catch (error) {
@@ -210,7 +216,7 @@ export default function ContratosFechados() {
     try {
       const dados = {
         cliente_id: formData.cliente_id,
-        vendedor_id: formData.vendedor_id || user.uid,
+        vendedor_id: formData.vendedor_id || user.id,
         valor_venda: parseFloat(formData.valor_venda),
         data_fechamento: formData.data_fechamento,
         comissao: formData.comissao ? parseFloat(formData.comissao) : 0,
@@ -232,7 +238,7 @@ export default function ContratosFechados() {
         // Criar
         const { error } = await supabase
           .from('contratos')
-          .insert([{ ...dados, criado_por: user.uid }])
+          .insert([{ ...dados, criado_por: user.id }])
         
         if (error) throw error
         
@@ -388,7 +394,7 @@ export default function ContratosFechados() {
         </div>
         <div className="flex gap-2 flex-wrap">
           <button
-            onClick={() => setShowRelatorio(true)}
+            onClick={() => setShowGerarRelatorio(true)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-green-500/10 text-green-500 hover:bg-green-500/20 transition-all text-sm"
           >
             <Download size={16} />
@@ -830,9 +836,9 @@ export default function ContratosFechados() {
       )}
 
       {/* ===== RELATÓRIO ===== */}
-      <RelatorioModal
-        isOpen={showRelatorio}
-        onClose={() => setShowRelatorio(false)}
+      <GerarRelatorioModal
+        isOpen={showGerarRelatorio}
+        onClose={() => setShowGerarRelatorio(false)}
         titulo="Relatório de Contratos Fechados"
         dados={dadosRelatorio}
         colunas={colunasRelatorio}

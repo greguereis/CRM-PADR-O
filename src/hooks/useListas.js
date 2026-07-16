@@ -83,7 +83,7 @@ export function useListas() {
           nome: nome.trim(),
           descricao: descricao.trim() || null,
           equipe_id: user.equipeId,
-          criado_por: user.uid,
+          criado_por: user.id,
           criado_em: new Date().toISOString(),
           total_contatos: 0
         })

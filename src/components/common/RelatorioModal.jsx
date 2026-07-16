@@ -1,8 +1,7 @@
 import { useState } from 'react'
 import { X, FileText, FileSpreadsheet, Calendar, Download } from 'lucide-react'
 import toast from 'react-hot-toast'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+import { exportarPDF, exportarCSV } from '../../utils/exportadores'
 
 export default function RelatorioModal({ 
   isOpen, 
@@ -43,52 +42,24 @@ export default function RelatorioModal({
     return true
   })
 
-  const exportarPDF = () => {
+  const handleExportarPDF = () => {
+    if (dadosFiltrados.length === 0) {
+      toast.error('Não há dados para exportar')
+      return
+    }
+
     setExportando(true)
     try {
-      const doc = new jsPDF()
-      const dataAtual = new Date().toLocaleDateString('pt-BR')
-      
-      doc.setFontSize(16)
-      doc.text(titulo, 14, 18)
-      doc.setFontSize(10)
-      doc.text(`Gerado em: ${dataAtual}`, 14, 26)
-      
-      if (dataInicio || dataFim) {
-        let periodo = 'Período: '
-        if (dataInicio) periodo += `de ${new Date(dataInicio).toLocaleDateString('pt-BR')} `
-        if (dataFim) periodo += `até ${new Date(dataFim).toLocaleDateString('pt-BR')}`
-        doc.text(periodo, 14, 32)
-      }
-      
-      doc.text(`Total: ${dadosFiltrados.length} registros`, 14, 38)
-      
-      const cabecalho = colunas.map(c => c.label)
-      const linhas = dadosFiltrados.map(item => 
-        colunas.map(c => {
-          let valor = item[c.key]
-          if (c.formatter) {
-            valor = c.formatter(valor)
-          }
-          return valor || '-'
-        })
+      const sucesso = exportarPDF(
+        dadosFiltrados,
+        colunas,
+        titulo,
+        nomeArquivo
       )
-      
-      autoTable(doc, {
-        startY: 44,
-        head: [cabecalho],
-        body: linhas,
-        theme: 'grid',
-        headStyles: { fillColor: [210, 182, 138], textColor: [34, 45, 82] },
-        styles: { fontSize: 8 },
-        columnStyles: {
-          0: { cellWidth: 'auto' }
-        },
-        margin: { left: 10, right: 10 }
-      })
-      
-      doc.save(`${nomeArquivo}-${dataAtual.replace(/\//g, '-')}.pdf`)
-      toast.success('PDF exportado com sucesso!')
+      if (sucesso) {
+        toast.success('PDF exportado com sucesso!')
+        onClose()
+      }
     } catch (error) {
       console.error('Erro ao exportar PDF:', error)
       toast.error('Erro ao exportar PDF')
@@ -97,32 +68,23 @@ export default function RelatorioModal({
     }
   }
 
-  const exportarCSV = () => {
+  const handleExportarCSV = () => {
+    if (dadosFiltrados.length === 0) {
+      toast.error('Não há dados para exportar')
+      return
+    }
+
     setExportando(true)
     try {
-      const cabecalho = colunas.map(c => c.label).join(',')
-      const linhas = dadosFiltrados.map(item => 
-        colunas.map(c => {
-          let valor = item[c.key]
-          if (c.formatter) {
-            valor = c.formatter(valor)
-          }
-          // Escape para CSV
-          if (typeof valor === 'string' && (valor.includes(',') || valor.includes('"'))) {
-            valor = `"${valor.replace(/"/g, '""')}"`
-          }
-          return valor || ''
-        }).join(',')
+      const sucesso = exportarCSV(
+        dadosFiltrados,
+        colunas,
+        nomeArquivo
       )
-      
-      const csv = [cabecalho, ...linhas].join('\n')
-      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
-      const link = document.createElement('a')
-      link.href = URL.createObjectURL(blob)
-      link.download = `${nomeArquivo}-${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.csv`
-      link.click()
-      URL.revokeObjectURL(link.href)
-      toast.success('CSV exportado com sucesso!')
+      if (sucesso) {
+        toast.success('CSV exportado com sucesso!')
+        onClose()
+      }
     } catch (error) {
       console.error('Erro ao exportar CSV:', error)
       toast.error('Erro ao exportar CSV')
@@ -182,7 +144,7 @@ export default function RelatorioModal({
 
           <div className="grid grid-cols-2 gap-3">
             <button
-              onClick={exportarPDF}
+              onClick={handleExportarPDF}
               disabled={exportando || dadosFiltrados.length === 0}
               className="flex items-center justify-center gap-2 p-3 rounded-lg bg-[#D2B68A] text-[#222D52] hover:bg-[#C4A67A] transition-all disabled:opacity-50 font-medium"
             >
@@ -190,7 +152,7 @@ export default function RelatorioModal({
               PDF
             </button>
             <button
-              onClick={exportarCSV}
+              onClick={handleExportarCSV}
               disabled={exportando || dadosFiltrados.length === 0}
               className="flex items-center justify-center gap-2 p-3 rounded-lg bg-green-500 text-white hover:bg-green-600 transition-all disabled:opacity-50 font-medium"
             >

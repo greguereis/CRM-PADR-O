@@ -22,7 +22,7 @@ export function useEventos() {
       let query = supabase
         .from('eventos')
         .select('*')
-        .eq('criado_por', user.uid)
+        .eq('criado_por', user.id)
         .order('data_hora', { ascending: true })
 
       // Filtros
@@ -105,7 +105,7 @@ export function useEventos() {
         .from('eventos')
         .select('*')
         .eq('tipo', 'test_drive')
-        .eq('criado_por', user.uid)
+        .eq('criado_por', user.id)
         .order('data_hora', { ascending: true })
 
       if (funcionarioId) {
@@ -164,7 +164,7 @@ export function useEventos() {
 
   // ===== CRIAR EVENTO =====
   const criarEvento = async (dados) => {
-    if (!user?.uid) {
+    if (!user?.id) {
       toast.error('Usuário não autenticado')
       return null
     }
@@ -172,7 +172,7 @@ export function useEventos() {
     try {
       const eventoData = {
         ...dados,
-        criado_por: user.uid,
+        criado_por: user.id,
         criado_em: new Date().toISOString()
       }
 
