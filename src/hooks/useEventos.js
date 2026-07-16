@@ -4,15 +4,14 @@ import { useAuth } from '../contexts/AuthContext'
 import toast from 'react-hot-toast'
 
 export function useEventos() {
-  const { user, membrosEquipe } = useAuth()
+  const { user } = useAuth()
   const [eventos, setEventos] = useState([])
   const [loading, setLoading] = useState(false)
-  const [filtroPeriodo, setFiltroPeriodo] = useState({
-    dataInicio: null,
-    dataFim: null
-  })
+  const [testDrives, setTestDrives] = useState([])
+  const [loadingTestDrives, setLoadingTestDrives] = useState(false)
 
-  const carregarEventos = useCallback(async (dataInicio = null, dataFim = null) => {
+  // ===== CARREGAR TODOS OS EVENTOS =====
+  const carregarEventos = useCallback(async (filtros = {}) => {
     if (!user?.equipeId) {
       setEventos([])
       return
@@ -22,63 +21,171 @@ export function useEventos() {
     try {
       let query = supabase
         .from('eventos')
-        .select('*, cliente:cliente_id(*), funcionario:funcionario_id(*)')
-        .eq('equipe_id', user.equipeId)
+        .select('*')
+        .eq('criado_por', user.uid)
         .order('data_hora', { ascending: true })
 
-      if (dataInicio) {
-        query = query.gte('data_hora', dataInicio)
+      // Filtros
+      if (filtros.tipo && filtros.tipo !== 'todos') {
+        query = query.eq('tipo', filtros.tipo)
       }
-      if (dataFim) {
-        query = query.lte('data_hora', dataFim)
+      if (filtros.funcionario_id) {
+        query = query.eq('funcionario_id', filtros.funcionario_id)
+      }
+      if (filtros.cliente_id) {
+        query = query.eq('cliente_id', filtros.cliente_id)
+      }
+      if (filtros.data_inicio) {
+        query = query.gte('data_hora', filtros.data_inicio)
+      }
+      if (filtros.data_fim) {
+        query = query.lte('data_hora', filtros.data_fim)
       }
 
       const { data, error } = await query
-
       if (error) throw error
 
-      // Mapeia os dados para incluir nomes
-      const eventosFormatados = (data || []).map(evento => ({
-        ...evento,
-        cliente_nome: evento.cliente?.nome || 'Cliente não encontrado',
-        funcionario_nome: evento.funcionario?.nome || 'Não definido',
-        funcionario_cor: evento.funcionario?.cor || '#6B7280'
-      }))
+      // Enriquecer com nomes
+      const eventosEnriquecidos = await Promise.all(
+        (data || []).map(async (evento) => {
+          let clienteNome = 'Cliente removido'
+          let clienteTelefone = ''
+          if (evento.cliente_id) {
+            const { data: cliente } = await supabase
+              .from('contatos')
+              .select('nome, telefone')
+              .eq('id', evento.cliente_id)
+              .single()
+            if (cliente) {
+              clienteNome = cliente.nome
+              clienteTelefone = cliente.telefone || ''
+            }
+          }
 
-      setEventos(eventosFormatados)
-      return eventosFormatados
+          let funcionarioNome = ''
+          if (evento.funcionario_id) {
+            const { data: funcionario } = await supabase
+              .from('usuarios')
+              .select('nome')
+              .eq('id', evento.funcionario_id)
+              .single()
+            if (funcionario) funcionarioNome = funcionario.nome
+          }
+
+          return {
+            ...evento,
+            cliente_nome: clienteNome,
+            cliente_telefone: clienteTelefone,
+            funcionario_nome: funcionarioNome
+          }
+        })
+      )
+
+      setEventos(eventosEnriquecidos)
+      return eventosEnriquecidos
     } catch (error) {
       console.error('Erro ao carregar eventos:', error)
       toast.error('Erro ao carregar eventos')
-      setEventos([])
       return []
     } finally {
       setLoading(false)
     }
   }, [user])
 
-  const criarEvento = async (dados) => {
+  // ===== CARREGAR TEST-DRIVES =====
+  const carregarTestDrives = useCallback(async (funcionarioId = null) => {
     if (!user?.equipeId) {
-      toast.error('Equipe não encontrada')
+      setTestDrives([])
+      return
+    }
+
+    setLoadingTestDrives(true)
+    try {
+      let query = supabase
+        .from('eventos')
+        .select('*')
+        .eq('tipo', 'test_drive')
+        .eq('criado_por', user.uid)
+        .order('data_hora', { ascending: true })
+
+      if (funcionarioId) {
+        query = query.eq('funcionario_id', funcionarioId)
+      }
+
+      const { data, error } = await query
+      if (error) throw error
+
+      // Enriquecer com nomes
+      const testDrivesEnriquecidos = await Promise.all(
+        (data || []).map(async (td) => {
+          let clienteNome = 'Cliente removido'
+          let veiculo = ''
+          if (td.cliente_id) {
+            const { data: cliente } = await supabase
+              .from('contatos')
+              .select('nome, veiculo_interesse')
+              .eq('id', td.cliente_id)
+              .single()
+            if (cliente) {
+              clienteNome = cliente.nome
+              veiculo = cliente.veiculo_interesse || td.veiculo || ''
+            }
+          }
+
+          let funcionarioNome = ''
+          if (td.funcionario_id) {
+            const { data: funcionario } = await supabase
+              .from('usuarios')
+              .select('nome')
+              .eq('id', td.funcionario_id)
+              .single()
+            if (funcionario) funcionarioNome = funcionario.nome
+          }
+
+          return {
+            ...td,
+            cliente_nome: clienteNome,
+            veiculo: veiculo,
+            funcionario_nome: funcionarioNome
+          }
+        })
+      )
+
+      setTestDrives(testDrivesEnriquecidos)
+      return testDrivesEnriquecidos
+    } catch (error) {
+      console.error('Erro ao carregar test-drives:', error)
+      toast.error('Erro ao carregar test-drives')
+      return []
+    } finally {
+      setLoadingTestDrives(false)
+    }
+  }, [user])
+
+  // ===== CRIAR EVENTO =====
+  const criarEvento = async (dados) => {
+    if (!user?.uid) {
+      toast.error('Usuário não autenticado')
       return null
     }
 
     try {
+      const eventoData = {
+        ...dados,
+        criado_por: user.uid,
+        criado_em: new Date().toISOString()
+      }
+
       const { data, error } = await supabase
         .from('eventos')
-        .insert({
-          ...dados,
-          equipe_id: user.equipeId,
-          criado_por: user.uid,
-          criado_em: new Date().toISOString()
-        })
+        .insert([eventoData])
         .select()
         .single()
 
       if (error) throw error
 
-      setEventos(prev => [...prev, data])
       toast.success('Evento criado com sucesso!')
+      await carregarEventos()
       return data
     } catch (error) {
       console.error('Erro ao criar evento:', error)
@@ -87,19 +194,20 @@ export function useEventos() {
     }
   }
 
-  const atualizarEvento = async (eventoId, dados) => {
+  // ===== ATUALIZAR EVENTO =====
+  const atualizarEvento = async (id, dados) => {
     try {
       const { data, error } = await supabase
         .from('eventos')
         .update(dados)
-        .eq('id', eventoId)
+        .eq('id', id)
         .select()
         .single()
 
       if (error) throw error
 
-      setEventos(prev => prev.map(e => e.id === eventoId ? { ...e, ...data } : e))
       toast.success('Evento atualizado!')
+      await carregarEventos()
       return data
     } catch (error) {
       console.error('Erro ao atualizar evento:', error)
@@ -108,19 +216,20 @@ export function useEventos() {
     }
   }
 
-  const excluirEvento = async (eventoId) => {
+  // ===== EXCLUIR EVENTO =====
+  const excluirEvento = async (id) => {
     if (!confirm('Tem certeza que deseja excluir este evento?')) return false
 
     try {
       const { error } = await supabase
         .from('eventos')
         .delete()
-        .eq('id', eventoId)
+        .eq('id', id)
 
       if (error) throw error
 
-      setEventos(prev => prev.filter(e => e.id !== eventoId))
       toast.success('Evento excluído!')
+      await carregarEventos()
       return true
     } catch (error) {
       console.error('Erro ao excluir evento:', error)
@@ -129,19 +238,45 @@ export function useEventos() {
     }
   }
 
-  const buscarEventosPorFuncionario = useCallback((funcionarioId) => {
-    return eventos.filter(e => e.funcionario_id === funcionarioId)
-  }, [eventos])
+  // ===== BUSCAR EVENTOS DE UM FUNCIONÁRIO =====
+  const buscarEventosPorFuncionario = useCallback(async (funcionarioId) => {
+    if (!funcionarioId) return []
 
-  const buscarEventosPorCliente = useCallback((clienteId) => {
-    return eventos.filter(e => e.cliente_id === clienteId)
-  }, [eventos])
+    try {
+      const { data, error } = await supabase
+        .from('eventos')
+        .select('*')
+        .eq('funcionario_id', funcionarioId)
+        .order('data_hora', { ascending: true })
 
-  const buscarEventosPorTipo = useCallback((tipo) => {
-    return eventos.filter(e => e.tipo === tipo)
-  }, [eventos])
+      if (error) throw error
+      return data || []
+    } catch (error) {
+      console.error('Erro ao buscar eventos do funcionário:', error)
+      return []
+    }
+  }, [])
 
-  // Carregar eventos iniciais
+  // ===== BUSCAR EVENTOS DE UM CLIENTE =====
+  const buscarEventosPorCliente = useCallback(async (clienteId) => {
+    if (!clienteId) return []
+
+    try {
+      const { data, error } = await supabase
+        .from('eventos')
+        .select('*')
+        .eq('cliente_id', clienteId)
+        .order('data_hora', { ascending: true })
+
+      if (error) throw error
+      return data || []
+    } catch (error) {
+      console.error('Erro ao buscar eventos do cliente:', error)
+      return []
+    }
+  }, [])
+
+  // ===== CARREGAR EVENTOS INICIALMENTE =====
   useEffect(() => {
     if (user?.equipeId) {
       carregarEventos()
@@ -151,14 +286,14 @@ export function useEventos() {
   return {
     eventos,
     loading,
+    testDrives,
+    loadingTestDrives,
     carregarEventos,
+    carregarTestDrives,
     criarEvento,
     atualizarEvento,
     excluirEvento,
     buscarEventosPorFuncionario,
-    buscarEventosPorCliente,
-    buscarEventosPorTipo,
-    filtroPeriodo,
-    setFiltroPeriodo
+    buscarEventosPorCliente
   }
 }

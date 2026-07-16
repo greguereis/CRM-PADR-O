@@ -1,71 +1,90 @@
 import { useState, useEffect, useRef } from 'react'
 import { 
-  Plus, Search, Filter, X, ChevronLeft, ChevronRight,
-  FileText, Download, Calendar, DollarSign, User, Briefcase,
-  CheckCircle, XCircle, Clock, AlertCircle, Eye, Edit2, Trash2,
-  Loader2, RefreshCw
+  Plus, Search, Filter, X, Edit2, Trash2, Eye,
+  ChevronLeft, ChevronRight, Download, FileText,
+  DollarSign, Calendar, User, CheckCircle, XCircle,
+  Clock, TrendingUp, BarChart3, Send, RefreshCw
 } from 'lucide-react'
-import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import RelatorioModal from '../components/common/RelatorioModal'
 import { formatCurrency, formatDate, formatDateTime } from '../utils/formatadores'
-import { useListas } from '../hooks/useListas'
-
-const statusOptions = [
-  { value: 'todos', label: 'Todos os status' },
-  { value: 'enviada', label: 'Enviada' },
-  { value: 'negociando', label: 'Negociando' },
-  { value: 'aceita', label: 'Aceita' },
-  { value: 'recusada', label: 'Recusada' },
-]
 
 export default function Propostas() {
   const { user, membrosEquipe } = useAuth()
-  const { listas } = useListas()
   
+  // Estados
   const [propostas, setPropostas] = useState([])
-  const [propostasFiltradas, setPropostasFiltradas] = useState([])
+  const [clientes, setClientes] = useState([])
   const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [filtroStatus, setFiltroStatus] = useState('todos')
-  const [filtroVendedor, setFiltroVendedor] = useState('todos')
-  const [dataInicio, setDataInicio] = useState('')
-  const [dataFim, setDataFim] = useState('')
-  const [showRelatorio, setShowRelatorio] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [editando, setEditando] = useState(null)
+  const [showRelatorio, setShowRelatorio] = useState(false)
   
-  const carregadoRef = useRef(false)
-
-  // Estados para nova proposta
-  const [novaProposta, setNovaProposta] = useState({
-    cliente_nome: '',
-    cliente_telefone: '',
-    cliente_email: '',
-    veiculo: '',
+  // Filtros
+  const [busca, setBusca] = useState('')
+  const [filtroStatus, setFiltroStatus] = useState('todos')
+  const [filtroVendedor, setFiltroVendedor] = useState('')
+  const [dataInicio, setDataInicio] = useState('')
+  const [dataFim, setDataFim] = useState('')
+  
+  // Formulário
+  const [formData, setFormData] = useState({
+    cliente_id: '',
+    vendedor_id: '',
     valor: '',
-    data_envio: new Date().toISOString().split('T')[0],
+    data_envio: '',
     status: 'enviada',
-    vendedor_id: user?.uid || '',
     observacoes: ''
   })
   const [salvando, setSalvando] = useState(false)
+  
+  // Métricas
+  const [metricas, setMetricas] = useState({
+    total: 0,
+    enviadas: 0,
+    negociando: 0,
+    aceitas: 0,
+    recusadas: 0,
+    valorTotal: 0,
+    valorAceitas: 0
+  })
 
+  const carregadoRef = useRef(false)
+
+  // Carregar dados
   useEffect(() => {
     if (user?.equipeId && !carregadoRef.current) {
       carregadoRef.current = true
+      carregarClientes()
       carregarPropostas()
     }
   }, [user?.equipeId])
 
+  // Atualizar métricas quando propostas mudarem
   useEffect(() => {
-    aplicarFiltros()
-  }, [propostas, searchTerm, filtroStatus, filtroVendedor, dataInicio, dataFim])
+    calcularMetricas()
+  }, [propostas])
+
+  // ===== FUNÇÕES DE CARREGAMENTO =====
+  const carregarClientes = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('contatos')
+        .select('id, nome, veiculo_interesse, telefone')
+        .eq('equipe_id', user.equipeId)
+        .is('deletado_em', null)
+        .order('nome')
+      
+      if (error) throw error
+      setClientes(data || [])
+    } catch (error) {
+      console.error('Erro ao carregar clientes:', error)
+    }
+  }
 
   const carregarPropostas = async () => {
-    if (!user?.equipeId) return
-    
     setLoading(true)
     try {
       const { data, error } = await supabase
@@ -73,38 +92,46 @@ export default function Propostas() {
         .select('*')
         .eq('equipe_id', user.equipeId)
         .order('data_envio', { ascending: false })
-
+      
       if (error) throw error
-
-      // Buscar nomes dos clientes e vendedores
-      const propostasCompletas = await Promise.all((data || []).map(async (proposta) => {
-        let clienteNome = proposta.cliente_nome || 'Cliente removido'
-        let vendedorNome = 'Desconhecido'
-        
-        // Buscar cliente se tiver cliente_id
-        if (proposta.cliente_id) {
-          const { data: clienteData } = await supabase
-            .from('contatos')
-            .select('nome')
-            .eq('id', proposta.cliente_id)
-            .single()
-          if (clienteData) clienteNome = clienteData.nome
-        }
-        
-        // Buscar vendedor
-        if (proposta.vendedor_id) {
-          const vendedor = membrosEquipe.find(m => m.id === proposta.vendedor_id)
-          if (vendedor) vendedorNome = vendedor.nome
-        }
-        
-        return {
-          ...proposta,
-          cliente_nome: clienteNome,
-          vendedor_nome: vendedorNome
-        }
-      }))
-
-      setPropostas(propostasCompletas)
+      
+      // Enriquecer com nomes
+      const propostasEnriquecidas = await Promise.all(
+        (data || []).map(async (proposta) => {
+          let clienteNome = 'Cliente removido'
+          let veiculo = ''
+          if (proposta.cliente_id) {
+            const { data: cliente } = await supabase
+              .from('contatos')
+              .select('nome, veiculo_interesse')
+              .eq('id', proposta.cliente_id)
+              .single()
+            if (cliente) {
+              clienteNome = cliente.nome
+              veiculo = cliente.veiculo_interesse || ''
+            }
+          }
+          
+          let vendedorNome = 'Vendedor removido'
+          if (proposta.vendedor_id) {
+            const { data: vendedor } = await supabase
+              .from('usuarios')
+              .select('nome')
+              .eq('id', proposta.vendedor_id)
+              .single()
+            if (vendedor) vendedorNome = vendedor.nome
+          }
+          
+          return {
+            ...proposta,
+            cliente_nome: clienteNome,
+            veiculo: veiculo,
+            vendedor_nome: vendedorNome
+          }
+        })
+      )
+      
+      setPropostas(propostasEnriquecidas)
     } catch (error) {
       console.error('Erro ao carregar propostas:', error)
       toast.error('Erro ao carregar propostas')
@@ -113,89 +140,80 @@ export default function Propostas() {
     }
   }
 
-  const aplicarFiltros = () => {
-    let filtrados = [...propostas]
-
-    // Busca
-    if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase().trim()
-      filtrados = filtrados.filter(p =>
-        p.cliente_nome?.toLowerCase().includes(term) ||
-        p.veiculo?.toLowerCase().includes(term) ||
-        p.observacoes?.toLowerCase().includes(term)
-      )
-    }
-
-    // Status
-    if (filtroStatus !== 'todos') {
-      filtrados = filtrados.filter(p => p.status === filtroStatus)
-    }
-
-    // Vendedor
-    if (filtroVendedor !== 'todos') {
-      filtrados = filtrados.filter(p => p.vendedor_id === filtroVendedor)
-    }
-
-    // Período
-    if (dataInicio) {
-      filtrados = filtrados.filter(p => p.data_envio >= dataInicio)
-    }
-    if (dataFim) {
-      filtrados = filtrados.filter(p => p.data_envio <= dataFim)
-    }
-
-    setPropostasFiltradas(filtrados)
+  // ===== MÉTRICAS =====
+  const calcularMetricas = () => {
+    const total = propostas.length
+    const enviadas = propostas.filter(p => p.status === 'enviada').length
+    const negociando = propostas.filter(p => p.status === 'negociando').length
+    const aceitas = propostas.filter(p => p.status === 'aceita').length
+    const recusadas = propostas.filter(p => p.status === 'recusada').length
+    
+    const valorTotal = propostas.reduce((acc, p) => acc + (p.valor || 0), 0)
+    const valorAceitas = propostas
+      .filter(p => p.status === 'aceita')
+      .reduce((acc, p) => acc + (p.valor || 0), 0)
+    
+    setMetricas({
+      total,
+      enviadas,
+      negociando,
+      aceitas,
+      recusadas,
+      valorTotal,
+      valorAceitas
+    })
   }
 
-  const handleSalvarProposta = async () => {
-    if (!novaProposta.cliente_nome.trim()) {
-      toast.error('Nome do cliente é obrigatório')
+  // ===== FUNÇÕES DE CRUD =====
+  const handleSalvar = async () => {
+    if (!formData.cliente_id) {
+      toast.error('Selecione um cliente')
       return
     }
-    if (!novaProposta.valor || parseFloat(novaProposta.valor) <= 0) {
-      toast.error('Valor da proposta é obrigatório')
+    if (!formData.valor || parseFloat(formData.valor) <= 0) {
+      toast.error('Digite um valor válido')
+      return
+    }
+    if (!formData.data_envio) {
+      toast.error('Selecione a data de envio')
       return
     }
 
     setSalvando(true)
     try {
       const dados = {
-        equipe_id: user.equipeId,
-        cliente_nome: novaProposta.cliente_nome.trim(),
-        cliente_telefone: novaProposta.cliente_telefone || null,
-        cliente_email: novaProposta.cliente_email || null,
-        veiculo: novaProposta.veiculo || null,
-        valor: parseFloat(novaProposta.valor),
-        data_envio: novaProposta.data_envio || new Date().toISOString().split('T')[0],
-        status: novaProposta.status,
-        vendedor_id: novaProposta.vendedor_id || user.uid,
-        observacoes: novaProposta.observacoes || null,
-        criado_por: user.uid,
-        criado_em: new Date().toISOString()
+        cliente_id: formData.cliente_id,
+        vendedor_id: formData.vendedor_id || user.uid,
+        valor: parseFloat(formData.valor),
+        data_envio: formData.data_envio,
+        status: formData.status || 'enviada',
+        observacoes: formData.observacoes || null,
+        equipe_id: user.equipeId
       }
 
-      const { data, error } = await supabase
-        .from('propostas')
-        .insert(dados)
-        .select()
-        .single()
+      if (editando) {
+        // Editar
+        const { error } = await supabase
+          .from('propostas')
+          .update(dados)
+          .eq('id', editando.id)
+        
+        if (error) throw error
+        toast.success('Proposta atualizada!')
+      } else {
+        // Criar
+        const { error } = await supabase
+          .from('propostas')
+          .insert([{ ...dados, criado_por: user.uid }])
+        
+        if (error) throw error
+        toast.success('Proposta criada!')
+      }
 
-      if (error) throw error
-
-      toast.success('Proposta criada com sucesso!')
       setShowModal(false)
-      setNovaProposta({
-        cliente_nome: '',
-        cliente_telefone: '',
-        cliente_email: '',
-        veiculo: '',
-        valor: '',
-        data_envio: new Date().toISOString().split('T')[0],
-        status: 'enviada',
-        vendedor_id: user?.uid || '',
-        observacoes: ''
-      })
-      carregarPropostas()
+      setEditando(null)
+      resetForm()
+      await carregarPropostas()
     } catch (error) {
       console.error('Erro ao salvar proposta:', error)
       toast.error('Erro ao salvar proposta')
@@ -204,71 +222,112 @@ export default function Propostas() {
     }
   }
 
-  const handleAtualizarStatus = async (id, novoStatus) => {
-    try {
-      const { error } = await supabase
-        .from('propostas')
-        .update({ status: novoStatus })
-        .eq('id', id)
-
-      if (error) throw error
-
-      toast.success(`Status atualizado para ${novoStatus}`)
-      carregarPropostas()
-    } catch (error) {
-      console.error('Erro ao atualizar status:', error)
-      toast.error('Erro ao atualizar status')
-    }
-  }
-
-  const handleExcluirProposta = async (id) => {
+  const handleExcluir = async (id) => {
     if (!confirm('Tem certeza que deseja excluir esta proposta?')) return
-
+    
     try {
       const { error } = await supabase
         .from('propostas')
         .delete()
         .eq('id', id)
-
+      
       if (error) throw error
-
       toast.success('Proposta excluída!')
-      carregarPropostas()
+      await carregarPropostas()
     } catch (error) {
       console.error('Erro ao excluir proposta:', error)
       toast.error('Erro ao excluir proposta')
     }
   }
 
-  const getStatusBadge = (status) => {
-    const config = {
-      enviada: { label: 'Enviada', cor: 'bg-blue-500/20 text-blue-500', icone: <Clock size={12} /> },
-      negociando: { label: 'Negociando', cor: 'bg-amber-500/20 text-amber-500', icone: <AlertCircle size={12} /> },
-      aceita: { label: 'Aceita', cor: 'bg-green-500/20 text-green-500', icone: <CheckCircle size={12} /> },
-      recusada: { label: 'Recusada', cor: 'bg-red-500/20 text-red-500', icone: <XCircle size={12} /> }
-    }
-    const c = config[status] || config.enviada
-    return (
-      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${c.cor}`}>
-        {c.icone} {c.label}
-      </span>
-    )
+  const handleEditar = (proposta) => {
+    setEditando(proposta)
+    setFormData({
+      cliente_id: proposta.cliente_id || '',
+      vendedor_id: proposta.vendedor_id || '',
+      valor: proposta.valor || '',
+      data_envio: proposta.data_envio || '',
+      status: proposta.status || 'enviada',
+      observacoes: proposta.observacoes || ''
+    })
+    setShowModal(true)
   }
 
+  const resetForm = () => {
+    setFormData({
+      cliente_id: '',
+      vendedor_id: '',
+      valor: '',
+      data_envio: '',
+      status: 'enviada',
+      observacoes: ''
+    })
+  }
+
+  // ===== FILTROS =====
+  const propostasFiltradas = propostas.filter(p => {
+    // Busca
+    if (busca) {
+      const termo = busca.toLowerCase()
+      const matchCliente = p.cliente_nome?.toLowerCase().includes(termo)
+      const matchVeiculo = p.veiculo?.toLowerCase().includes(termo)
+      const matchObservacao = p.observacoes?.toLowerCase().includes(termo)
+      if (!matchCliente && !matchVeiculo && !matchObservacao) return false
+    }
+    
+    // Status
+    if (filtroStatus !== 'todos' && p.status !== filtroStatus) return false
+    
+    // Vendedor
+    if (filtroVendedor && p.vendedor_id !== filtroVendedor) return false
+    
+    // Período
+    if (dataInicio && p.data_envio < dataInicio) return false
+    if (dataFim && p.data_envio > dataFim) return false
+    
+    return true
+  })
+
+  // ===== RELATÓRIO =====
   const colunasRelatorio = [
+    { key: 'data_envio', label: 'Data Envio', formatter: formatDate },
     { key: 'cliente_nome', label: 'Cliente' },
     { key: 'veiculo', label: 'Veículo' },
     { key: 'vendedor_nome', label: 'Vendedor' },
     { key: 'valor', label: 'Valor', formatter: formatCurrency },
-    { key: 'data_envio', label: 'Data Envio', formatter: formatDate },
     { key: 'status', label: 'Status' },
+    { key: 'observacoes', label: 'Observações' }
   ]
 
-  const totalValor = propostasFiltradas.reduce((acc, p) => acc + (p.valor || 0), 0)
-  const totalAceitas = propostasFiltradas.filter(p => p.status === 'aceita').length
-  const totalAceitasValor = propostasFiltradas
-    .filter(p => p.status === 'aceita')
-    .reduce((acc, p) => acc + (p.valor || 0), 0)
+  const dadosRelatorio = propostasFiltradas.map(p => ({
+    ...p,
+    status: p.status === 'enviada' ? 'Enviada' : 
+            p.status === 'negociando' ? 'Negociando' : 
+            p.status === 'aceita' ? '✅ Aceita' : 
+            p.status === 'recusada' ? '❌ Recusada' : p.status
+  }))
+
+  // ===== RENDER =====
+  const getStatusBadge = (status) => {
+    const configs = {
+      enviada: { label: 'Enviada', cor: 'bg-blue-500/10 text-blue-500', icon: <Send size={12} /> },
+      negociando: { label: 'Negociando', cor: 'bg-amber-500/10 text-amber-500', icon: <Clock size={12} /> },
+      aceita: { label: '✅ Aceita', cor: 'bg-green-500/10 text-green-500', icon: <CheckCircle size={12} /> },
+      recusada: { label: '❌ Recusada', cor: 'bg-red-500/10 text-red-500', icon: <XCircle size={12} /> }
+    }
+    return configs[status] || configs.enviada
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-[#D2B68A] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-[var(--text-secondary)]">Carregando propostas...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-4">
@@ -276,344 +335,346 @@ export default function Propostas() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="text-lg sm:text-2xl font-bold text-[var(--text-primary)] flex items-center gap-2">
-            <FileText size={20} className="text-[#D2B68A]" />
+            <FileText size={24} className="text-[#D2B68A]" />
             Propostas
           </h1>
-          <p className="text-sm text-[var(--text-secondary)]">
+          <p className="text-xs sm:text-sm text-[var(--text-secondary)]">
             Gerencie todas as propostas enviadas para seus clientes
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
           <button
             onClick={() => setShowRelatorio(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-500 text-white hover:bg-green-600 transition-all text-sm"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-green-500/10 text-green-500 hover:bg-green-500/20 transition-all text-sm"
           >
-            <Download size={16} /> Relatório
+            <Download size={16} />
+            Relatório
           </button>
           <button
-            onClick={() => setShowModal(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#D2B68A] text-[#222D52] hover:bg-[#C4A67A] transition-all text-sm font-medium"
+            onClick={() => { setEditando(null); resetForm(); setShowModal(true) }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#D2B68A] text-[#222D52] hover:bg-[#C4A67A] transition-all text-sm font-medium"
           >
-            <Plus size={16} /> Nova Proposta
+            <Plus size={16} />
+            Nova Proposta
           </button>
         </div>
       </div>
 
       {/* Métricas */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <div className="card p-3 text-center">
-          <p className="text-lg sm:text-xl font-bold text-[var(--text-primary)]">{propostasFiltradas.length}</p>
-          <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider">Total</p>
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 sm:gap-2">
+        <div className="card p-2 sm:p-3 text-center">
+          <p className="text-lg sm:text-xl font-bold text-[var(--text-primary)]">{metricas.total}</p>
+          <p className="text-[7px] sm:text-[10px] text-[var(--text-secondary)] uppercase tracking-wider">Total</p>
         </div>
-        <div className="card p-3 text-center">
-          <p className="text-lg sm:text-xl font-bold text-amber-500">{formatCurrency(totalValor)}</p>
-          <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider">Valor Total</p>
+        <div className="card p-2 sm:p-3 text-center">
+          <p className="text-lg sm:text-xl font-bold text-blue-500">{metricas.enviadas}</p>
+          <p className="text-[7px] sm:text-[10px] text-[var(--text-secondary)] uppercase tracking-wider">Enviadas</p>
         </div>
-        <div className="card p-3 text-center">
-          <p className="text-lg sm:text-xl font-bold text-green-500">{totalAceitas}</p>
-          <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider">Aceitas</p>
+        <div className="card p-2 sm:p-3 text-center">
+          <p className="text-lg sm:text-xl font-bold text-amber-500">{metricas.negociando}</p>
+          <p className="text-[7px] sm:text-[10px] text-[var(--text-secondary)] uppercase tracking-wider">Negociando</p>
         </div>
-        <div className="card p-3 text-center">
-          <p className="text-lg sm:text-xl font-bold text-green-500">{formatCurrency(totalAceitasValor)}</p>
-          <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider">Valor Aceito</p>
+        <div className="card p-2 sm:p-3 text-center">
+          <p className="text-lg sm:text-xl font-bold text-green-500">{metricas.aceitas}</p>
+          <p className="text-[7px] sm:text-[10px] text-[var(--text-secondary)] uppercase tracking-wider">Aceitas</p>
+        </div>
+        <div className="card p-2 sm:p-3 text-center">
+          <p className="text-lg sm:text-xl font-bold text-red-500">{metricas.recusadas}</p>
+          <p className="text-[7px] sm:text-[10px] text-[var(--text-secondary)] uppercase tracking-wider">Recusadas</p>
+        </div>
+        <div className="card p-2 sm:p-3 text-center bg-[#D2B68A]/10 border-[#D2B68A]/20">
+          <p className="text-lg sm:text-xl font-bold text-[#D2B68A]">{formatCurrency(metricas.valorTotal)}</p>
+          <p className="text-[7px] sm:text-[10px] text-[var(--text-secondary)] uppercase tracking-wider">Valor Total</p>
         </div>
       </div>
 
       {/* Filtros */}
-      <div className="card p-3 space-y-2">
+      <div className="card p-3">
         <div className="flex flex-wrap gap-2 items-center">
           <div className="flex-1 min-w-[150px] relative">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
             <input
               type="text"
-              placeholder="Buscar por cliente ou veículo..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] placeholder-[var(--text-secondary)] border border-transparent focus:border-[#D2B68A] outline-none"
+              placeholder="Buscar por cliente, veículo..."
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              className="w-full pl-8 pr-3 py-1.5 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] border border-transparent focus:border-[#D2B68A] outline-none"
             />
           </div>
 
           <select
             value={filtroStatus}
             onChange={(e) => setFiltroStatus(e.target.value)}
-            className="px-3 py-1.5 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] border border-[var(--border-color)] focus:border-[#D2B68A] outline-none"
+            className="px-3 py-1.5 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] border border-transparent focus:border-[#D2B68A] outline-none"
           >
-            {statusOptions.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
+            <option value="todos">Todos os status</option>
+            <option value="enviada">Enviada</option>
+            <option value="negociando">Negociando</option>
+            <option value="aceita">Aceita</option>
+            <option value="recusada">Recusada</option>
           </select>
 
           <select
             value={filtroVendedor}
             onChange={(e) => setFiltroVendedor(e.target.value)}
-            className="px-3 py-1.5 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] border border-[var(--border-color)] focus:border-[#D2B68A] outline-none"
+            className="px-3 py-1.5 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] border border-transparent focus:border-[#D2B68A] outline-none"
           >
-            <option value="todos">Todos os vendedores</option>
+            <option value="">Todos os vendedores</option>
             {membrosEquipe.map(m => (
               <option key={m.id} value={m.id}>{m.nome}</option>
             ))}
           </select>
 
-          <div className="flex items-center gap-1">
-            <input
-              type="date"
-              value={dataInicio}
-              onChange={(e) => setDataInicio(e.target.value)}
-              className="px-2 py-1.5 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] border border-[var(--border-color)] focus:border-[#D2B68A] outline-none w-32"
-              placeholder="Início"
-            />
-            <span className="text-[var(--text-muted)]">até</span>
-            <input
-              type="date"
-              value={dataFim}
-              onChange={(e) => setDataFim(e.target.value)}
-              className="px-2 py-1.5 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] border border-[var(--border-color)] focus:border-[#D2B68A] outline-none w-32"
-              placeholder="Fim"
-            />
-          </div>
+          <input
+            type="date"
+            value={dataInicio}
+            onChange={(e) => setDataInicio(e.target.value)}
+            className="px-3 py-1.5 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] border border-transparent focus:border-[#D2B68A] outline-none w-32"
+            placeholder="Início"
+          />
 
-          {(searchTerm || filtroStatus !== 'todos' || filtroVendedor !== 'todos' || dataInicio || dataFim) && (
-            <button
-              onClick={() => {
-                setSearchTerm('')
-                setFiltroStatus('todos')
-                setFiltroVendedor('todos')
-                setDataInicio('')
-                setDataFim('')
-              }}
-              className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-500 transition-colors"
-            >
-              <X size={18} />
-            </button>
-          )}
+          <input
+            type="date"
+            value={dataFim}
+            onChange={(e) => setDataFim(e.target.value)}
+            className="px-3 py-1.5 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] border border-transparent focus:border-[#D2B68A] outline-none w-32"
+            placeholder="Fim"
+          />
+
+          <button
+            onClick={() => {
+              setBusca('')
+              setFiltroStatus('todos')
+              setFiltroVendedor('')
+              setDataInicio('')
+              setDataFim('')
+            }}
+            className="px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-all text-sm"
+          >
+            <X size={14} className="inline" /> Limpar
+          </button>
         </div>
       </div>
 
       {/* Tabela */}
       <div className="card overflow-hidden">
-        {loading ? (
+        {propostasFiltradas.length === 0 ? (
           <div className="p-12 text-center">
-            <Loader2 size={24} className="animate-spin mx-auto text-[#D2B68A]" />
-          </div>
-        ) : propostasFiltradas.length === 0 ? (
-          <div className="p-12 text-center">
-            <FileText size={32} className="mx-auto mb-3 text-[var(--text-muted)]" />
-            <p className="text-sm text-[var(--text-secondary)]">Nenhuma proposta encontrada</p>
+            <FileText size={32} className="mx-auto text-[var(--text-muted)] opacity-30" />
+            <p className="text-sm text-[var(--text-muted)] mt-2">Nenhuma proposta encontrada</p>
+            <button
+              onClick={() => { setEditando(null); resetForm(); setShowModal(true) }}
+              className="mt-2 text-sm text-[#D2B68A] hover:underline"
+            >
+              Criar primeira proposta
+            </button>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full">
               <thead>
                 <tr className="border-b border-[var(--border-color)] bg-[var(--bg-tertiary)]/50">
                   <th className="text-left p-3 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Cliente</th>
                   <th className="text-left p-3 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Veículo</th>
                   <th className="text-left p-3 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Vendedor</th>
-                  <th className="text-right p-3 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Valor</th>
-                  <th className="text-left p-3 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Data</th>
+                  <th className="text-left p-3 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Valor</th>
+                  <th className="text-left p-3 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Envio</th>
                   <th className="text-left p-3 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Status</th>
-                  <th className="text-center p-3 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Ações</th>
+                  <th className="text-right p-3 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Ações</th>
                 </tr>
               </thead>
               <tbody>
-                {propostasFiltradas.map((proposta) => (
-                  <tr key={proposta.id} className="border-b border-[var(--border-color)] hover:bg-[var(--bg-tertiary)]/30 transition-colors">
-                    <td className="p-3">
-                      <div>
-                        <p className="font-medium text-[var(--text-primary)]">{proposta.cliente_nome}</p>
-                        {proposta.cliente_telefone && (
-                          <p className="text-xs text-[var(--text-muted)]">{proposta.cliente_telefone}</p>
-                        )}
-                      </div>
-                    </td>
-                    <td className="p-3 text-[var(--text-secondary)]">
-                      {proposta.veiculo || '-'}
-                    </td>
-                    <td className="p-3 text-[var(--text-secondary)]">
-                      {proposta.vendedor_nome || '-'}
-                    </td>
-                    <td className="p-3 text-right font-medium text-[var(--text-primary)]">
-                      {formatCurrency(proposta.valor)}
-                    </td>
-                    <td className="p-3 text-[var(--text-secondary)]">
-                      {formatDate(proposta.data_envio)}
-                    </td>
-                    <td className="p-3">
-                      <div className="flex items-center gap-1">
-                        {getStatusBadge(proposta.status)}
-                      </div>
-                    </td>
-                    <td className="p-3">
-                      <div className="flex items-center justify-center gap-1">
-                        <select
-                          value={proposta.status}
-                          onChange={(e) => handleAtualizarStatus(proposta.id, e.target.value)}
-                          className="text-xs px-2 py-0.5 bg-[var(--bg-tertiary)] rounded border border-[var(--border-color)] focus:border-[#D2B68A] outline-none"
-                        >
-                          <option value="enviada">Enviada</option>
-                          <option value="negociando">Negociando</option>
-                          <option value="aceita">Aceita</option>
-                          <option value="recusada">Recusada</option>
-                        </select>
-                        <button
-                          onClick={() => handleExcluirProposta(proposta.id)}
-                          className="p-1 rounded hover:bg-red-500/10 text-[var(--text-secondary)] hover:text-red-500 transition-colors"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {propostasFiltradas.map((p) => {
+                  const status = getStatusBadge(p.status)
+                  return (
+                    <tr key={p.id} className="border-b border-[var(--border-color)] hover:bg-[var(--bg-tertiary)]/30 transition-all">
+                      <td className="p-3">
+                        <div>
+                          <p className="text-sm font-medium text-[var(--text-primary)]">{p.cliente_nome}</p>
+                          {p.cliente_telefone && (
+                            <p className="text-xs text-[var(--text-muted)] font-mono">{p.cliente_telefone}</p>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-3">
+                        <span className="text-sm text-[var(--text-secondary)]">{p.veiculo || '-'}</span>
+                      </td>
+                      <td className="p-3">
+                        <span className="text-sm text-[var(--text-secondary)]">{p.vendedor_nome}</span>
+                      </td>
+                      <td className="p-3">
+                        <span className="text-sm font-bold text-[#10B981]">{formatCurrency(p.valor)}</span>
+                      </td>
+                      <td className="p-3">
+                        <span className="text-sm text-[var(--text-secondary)]">{formatDate(p.data_envio)}</span>
+                      </td>
+                      <td className="p-3">
+                        <span className={`text-[10px] px-2 py-1 rounded-full ${status.cor} flex items-center gap-1 w-fit`}>
+                          {status.icon} {status.label}
+                        </span>
+                      </td>
+                      <td className="p-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => handleEditar(p)}
+                            className="p-1.5 rounded hover:bg-[#D2B68A]/10 text-[var(--text-secondary)] hover:text-[#D2B68A] transition-colors"
+                            title="Editar"
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button
+                            onClick={() => handleExcluir(p.id)}
+                            className="p-1.5 rounded hover:bg-red-500/10 text-[var(--text-secondary)] hover:text-red-500 transition-colors"
+                            title="Excluir"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
         )}
       </div>
 
-      {/* Modal Nova Proposta */}
+      {/* ===== MODAL DE PROPOSTA ===== */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowModal(false)} />
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => { setShowModal(false); setEditando(null); resetForm() }} />
           <div className="relative bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-xl p-6 w-full max-w-md shadow-2xl z-10 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-[var(--text-primary)] flex items-center gap-2">
                 <FileText size={20} className="text-[#D2B68A]" />
-                Nova Proposta
+                {editando ? 'Editar Proposta' : 'Nova Proposta'}
               </h2>
-              <button onClick={() => setShowModal(false)} className="p-2 rounded-lg hover:bg-[var(--bg-tertiary)] text-[var(--text-secondary)]">
+              <button onClick={() => { setShowModal(false); setEditando(null); resetForm() }} className="p-2 rounded-lg hover:bg-[var(--bg-tertiary)] text-[var(--text-secondary)]">
                 <X size={20} />
               </button>
             </div>
-            <div className="space-y-3">
+
+            <form onSubmit={(e) => { e.preventDefault(); handleSalvar() }} className="space-y-4">
               <div>
-                <label className="text-sm font-medium text-[var(--text-secondary)]">Nome do Cliente *</label>
-                <input
-                  type="text"
-                  value={novaProposta.cliente_nome}
-                  onChange={(e) => setNovaProposta({ ...novaProposta, cliente_nome: e.target.value })}
-                  placeholder="Nome do cliente"
-                  className="w-full mt-1 px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] border border-[var(--border-color)] focus:border-[#D2B68A] outline-none"
-                  autoFocus
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-sm font-medium text-[var(--text-secondary)]">Telefone</label>
-                  <input
-                    type="text"
-                    value={novaProposta.cliente_telefone}
-                    onChange={(e) => setNovaProposta({ ...novaProposta, cliente_telefone: e.target.value })}
-                    placeholder="(00) 00000-0000"
-                    className="w-full mt-1 px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] border border-[var(--border-color)] focus:border-[#D2B68A] outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-[var(--text-secondary)]">Email</label>
-                  <input
-                    type="email"
-                    value={novaProposta.cliente_email}
-                    onChange={(e) => setNovaProposta({ ...novaProposta, cliente_email: e.target.value })}
-                    placeholder="email@exemplo.com"
-                    className="w-full mt-1 px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] border border-[var(--border-color)] focus:border-[#D2B68A] outline-none"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-[var(--text-secondary)]">Veículo</label>
-                <input
-                  type="text"
-                  value={novaProposta.veiculo}
-                  onChange={(e) => setNovaProposta({ ...novaProposta, veiculo: e.target.value })}
-                  placeholder="Ex: Honda Civic 2023"
-                  className="w-full mt-1 px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] border border-[var(--border-color)] focus:border-[#D2B68A] outline-none"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-[var(--text-secondary)]">Valor da Proposta *</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={novaProposta.valor}
-                  onChange={(e) => setNovaProposta({ ...novaProposta, valor: e.target.value })}
-                  placeholder="0,00"
-                  className="w-full mt-1 px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] border border-[var(--border-color)] focus:border-[#D2B68A] outline-none"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-[var(--text-secondary)]">Data de Envio</label>
-                <input
-                  type="date"
-                  value={novaProposta.data_envio}
-                  onChange={(e) => setNovaProposta({ ...novaProposta, data_envio: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] border border-[var(--border-color)] focus:border-[#D2B68A] outline-none"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-[var(--text-secondary)]">Status</label>
+                <label className="text-sm font-medium text-[var(--text-secondary)] block mb-1">Cliente *</label>
                 <select
-                  value={novaProposta.status}
-                  onChange={(e) => setNovaProposta({ ...novaProposta, status: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] border border-[var(--border-color)] focus:border-[#D2B68A] outline-none"
+                  value={formData.cliente_id}
+                  onChange={(e) => setFormData({ ...formData, cliente_id: e.target.value })}
+                  className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] border border-[var(--border-color)] focus:border-[#D2B68A] outline-none"
+                  required
                 >
-                  <option value="enviada">Enviada</option>
-                  <option value="negociando">Negociando</option>
-                  <option value="aceita">Aceita</option>
-                  <option value="recusada">Recusada</option>
+                  <option value="">Selecione um cliente</option>
+                  {clientes.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.nome} {c.veiculo_interesse ? `- ${c.veiculo_interesse}` : ''}
+                    </option>
+                  ))}
                 </select>
               </div>
+
               <div>
-                <label className="text-sm font-medium text-[var(--text-secondary)]">Vendedor</label>
+                <label className="text-sm font-medium text-[var(--text-secondary)] block mb-1">Vendedor</label>
                 <select
-                  value={novaProposta.vendedor_id}
-                  onChange={(e) => setNovaProposta({ ...novaProposta, vendedor_id: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] border border-[var(--border-color)] focus:border-[#D2B68A] outline-none"
+                  value={formData.vendedor_id}
+                  onChange={(e) => setFormData({ ...formData, vendedor_id: e.target.value })}
+                  className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] border border-[var(--border-color)] focus:border-[#D2B68A] outline-none"
                 >
+                  <option value="">Selecione um vendedor</option>
                   {membrosEquipe.map(m => (
                     <option key={m.id} value={m.id}>{m.nome}</option>
                   ))}
                 </select>
               </div>
+
               <div>
-                <label className="text-sm font-medium text-[var(--text-secondary)]">Observações</label>
-                <textarea
-                  value={novaProposta.observacoes}
-                  onChange={(e) => setNovaProposta({ ...novaProposta, observacoes: e.target.value })}
-                  rows="3"
-                  placeholder="Detalhes da proposta..."
-                  className="w-full mt-1 px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] border border-[var(--border-color)] focus:border-[#D2B68A] outline-none resize-none"
+                <label className="text-sm font-medium text-[var(--text-secondary)] block mb-1">Valor (R$) *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={formData.valor}
+                  onChange={(e) => setFormData({ ...formData, valor: e.target.value })}
+                  placeholder="0,00"
+                  className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] border border-[var(--border-color)] focus:border-[#D2B68A] outline-none"
+                  required
                 />
               </div>
+
+              <div>
+                <label className="text-sm font-medium text-[var(--text-secondary)] block mb-1">Data de Envio *</label>
+                <input
+                  type="date"
+                  value={formData.data_envio}
+                  onChange={(e) => setFormData({ ...formData, data_envio: e.target.value })}
+                  className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] border border-[var(--border-color)] focus:border-[#D2B68A] outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-[var(--text-secondary)] block mb-1">Status</label>
+                <select
+                  value={formData.status}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                  className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] border border-[var(--border-color)] focus:border-[#D2B68A] outline-none"
+                >
+                  <option value="enviada">Enviada</option>
+                  <option value="negociando">Negociando</option>
+                  <option value="aceita">✅ Aceita</option>
+                  <option value="recusada">❌ Recusada</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-[var(--text-secondary)] block mb-1">Observações</label>
+                <textarea
+                  value={formData.observacoes}
+                  onChange={(e) => setFormData({ ...formData, observacoes: e.target.value })}
+                  rows="3"
+                  placeholder="Detalhes adicionais..."
+                  className="w-full px-3 py-2 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] border border-[var(--border-color)] focus:border-[#D2B68A] outline-none resize-none"
+                />
+              </div>
+
               <div className="flex gap-2 pt-2">
                 <button
-                  onClick={() => setShowModal(false)}
+                  type="button"
+                  onClick={() => { setShowModal(false); setEditando(null); resetForm() }}
                   className="flex-1 py-2.5 text-sm rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
-                  onClick={handleSalvarProposta}
-                  disabled={salvando || !novaProposta.cliente_nome.trim() || !novaProposta.valor}
+                  type="submit"
+                  disabled={salvando}
                   className="flex-1 py-2.5 text-sm rounded-lg bg-[#D2B68A] text-[#222D52] hover:bg-[#C4A67A] disabled:opacity-50 font-medium flex items-center justify-center gap-2"
                 >
-                  {salvando ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />}
-                  {salvando ? 'Salvando...' : 'Salvar Proposta'}
+                  {salvando ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-[#222D52] border-t-transparent rounded-full animate-spin" />
+                      Salvando...
+                    </>
+                  ) : (
+                    <>
+                      <FileText size={16} />
+                      {editando ? 'Atualizar' : 'Criar'}
+                    </>
+                  )}
                 </button>
               </div>
-            </div>
+            </form>
           </div>
         </div>
       )}
 
-      {/* Modal Relatório */}
+      {/* ===== RELATÓRIO ===== */}
       <RelatorioModal
         isOpen={showRelatorio}
         onClose={() => setShowRelatorio(false)}
         titulo="Relatório de Propostas"
-        dados={propostasFiltradas}
+        dados={dadosRelatorio}
         colunas={colunasRelatorio}
         nomeArquivo="propostas"
-        periodoInicial={dataInicio}
-        periodoFinal={dataFim}
       />
     </div>
   )
