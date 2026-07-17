@@ -11,7 +11,7 @@ import toast from 'react-hot-toast'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import ModalEvento from '../components/common/ModalEvento'
-import TestDriveForm from '../components/agenda/TestDriveForm'
+import TestDriveForm from '../components/common/TestDriveForm'
 import GerarRelatorioModal from '../components/common/GerarRelatorioModal'
 import { formatDateTime } from '../utils/formatadores'
 
