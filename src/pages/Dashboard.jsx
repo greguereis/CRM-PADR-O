@@ -8,7 +8,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import { formatCurrency, formatDate } from '../utils/formatadores'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
-import GerarRelatorioModal from '../components/common/GerarRelatorioModal'
+import GerarRelatorioModal from './Relatorios/GerarRelatorioModal'
 import toast from 'react-hot-toast'
 
 export default function Dashboard() {
