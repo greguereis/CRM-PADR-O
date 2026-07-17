@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { X, FileText, FileSpreadsheet, Calendar, Download } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { exportarPDF, exportarCSV } from '../../utils/exportadores'
+import { exportarPDF, exportarCSV } from '../utils/exportadores'
 
 export default function GerarRelatorioModal({
   isOpen,
