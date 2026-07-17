@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { useAuth } from './contexts/AuthContext'
+// import { useAuth } from './contexts/AuthContext'  // COMENTADO PARA TESTE
 import Layout from './components/Layout/Layout'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
@@ -9,18 +9,25 @@ import Propostas from './pages/Propostas'
 import ContratosFechados from './pages/ContratosFechados'
 import Equipe from './pages/Equipe'
 
+// ===== PRIVATE ROUTE COMENTADO PARA TESTE =====
+// function PrivateRoute({ children }) {
+//   const { user, loading } = useAuth()
+//   
+//   if (loading) {
+//     return (
+//       <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)]">
+//         <div className="text-[#D2B68A] text-lg font-medium">Carregando...</div>
+//       </div>
+//     )
+//   }
+//   
+//   return user ? children : <Navigate to="/login" />
+// }
+
+// ===== NOVO PRIVATE ROUTE SEM AUTENTICAÇÃO (MODO TESTE) =====
 function PrivateRoute({ children }) {
-  const { user, loading } = useAuth()
-  
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)]">
-        <div className="text-[#D2B68A] text-lg font-medium">Carregando...</div>
-      </div>
-    )
-  }
-  
-  return user ? children : <Navigate to="/login" />
+  // SEMPRE RETORNA O CHILDREN - NÃO BLOQUEIA ACESSO
+  return children
 }
 
 export default function App() {
