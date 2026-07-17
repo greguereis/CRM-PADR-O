@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useAuth } from '../../contexts/AuthContext'
-import { supabase } from '../../lib/supabase'
+import { useAuth } from '../contexts/AuthContext'
+import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 
 export default function LeadsContainer({ children }) {
@@ -157,7 +157,7 @@ export default function LeadsContainer({ children }) {
         .from('historico_interacoes')
         .insert({
           contato_id: leadId,
-          usuario_id: user.uid,
+          usuario_id: user.id,
           usuario_nome: user.nome || user.email,
           tipo: 'status',
           descricao: `Status alterado para: ${novoStatus}`,
