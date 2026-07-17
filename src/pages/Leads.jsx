@@ -7,7 +7,7 @@ import {
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
-import LeadsContainer from '../components/leads/LeadsContainer'
+import LeadsContainer from '../components/LeadsContainer'
 import ListaSelector from '../components/leads/ListaSelector'
 import RelatorioModal from '../components/common/RelatorioModal'
 import GerarRelatorioModal from '../components/common/GerarRelatorioModal'
