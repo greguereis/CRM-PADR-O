@@ -7,7 +7,7 @@ import {
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
-import GerarRelatorioModal from '../components/common/GerarRelatorioModal'
+import GerarRelatorioModal from '../Relatorios/GerarRelatorioModal'
 import { formatCurrency, formatDate } from '../utils/formatadores'
 
 export default function ContratosFechados() {

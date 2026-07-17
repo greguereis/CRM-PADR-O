@@ -82,7 +82,7 @@ export function AuthProvider({ children }) {
 
       // Definir cores fixas para cada membro (baseado no email)
       const coresPorEmail = {
-        'closermatheus@gmail.com': { cor: '#8B5CF6', corClara: '#EDE9FE' }, // Roxo
+        'greguereisferreira@gmail.com': { cor: '#8B5CF6', corClara: '#EDE9FE' }, // Roxo
         'sther@gmail.com': { cor: '#3B82F6', corClara: '#DBEAFE' }, // Azul
         'greg@gmail.com': { cor: '#10B981', corClara: '#D1FAE5' }, // Verde
         // Adicione mais membros aqui conforme necessário

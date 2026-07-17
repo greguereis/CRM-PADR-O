@@ -12,7 +12,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday
 import { ptBR } from 'date-fns/locale'
 import ModalEvento from '../components/common/ModalEvento'
 import TestDriveForm from '../components/common/TestDriveForm'
-import GerarRelatorioModal from '../components/common/GerarRelatorioModal'
+import GerarRelatorioModal from '../Relatorios/GerarRelatorioModal'
 import { formatDateTime } from '../utils/formatadores'
 
 export default function Agenda() {

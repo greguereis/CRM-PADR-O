@@ -8,9 +8,9 @@ import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import LeadsContainer from '../components/LeadsContainer'
-import ListaSelector from '../components/leads/ListaSelector'
+import ListaSelector from '../components/common/ListaSelector'
 import RelatorioModal from '../components/common/RelatorioModal'
-import GerarRelatorioModal from '../components/common/GerarRelatorioModal'
+import GerarRelatorioModal from '../Relatorios/GerarRelatorioModal'
 import { formatCurrency, formatDate, formatPhone } from '../utils/formatadores'
 
 // ===== CONSTANTES =====

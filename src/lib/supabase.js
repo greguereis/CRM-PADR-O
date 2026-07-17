@@ -63,7 +63,7 @@ export const signOut = async () => {
  * @returns {boolean}
  */
 export const isAdminUser = (email) => {
-  return email === 'closermatheus@gmail.com'
+  return email === 'greguereisferreira@gmail.com'
 }
 
 /**
